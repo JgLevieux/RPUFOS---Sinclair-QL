@@ -148,6 +148,9 @@ MainLoop:
 
 				cmp.l	#GAME_STATUS_GAME,d0
 				beq.s   .CaseGame
+
+				cmp.l	#GAME_STATUS_GAMEOVER,d0
+				beq.s   .CaseGameOver
 				
 				bra.s   .EndSwitch
 
@@ -157,6 +160,10 @@ MainLoop:
 .CaseGame:
 				bsr		ProcessGame
 				bra.s   .EndSwitch
+.CaseGameOver:
+				bsr		ProcessGameOver
+				bra.s   .EndSwitch
+				nop
 .EndSwitch:				
 
 				bsr		DrawVblTimer
@@ -195,9 +202,6 @@ ProcessMenu:
 				lea     NbLoop(pc),a0
 				move.l	(a0),d0
 				cmp.l	#50,d0
-
-
-
 				beq		StartGame
 
 				rts
@@ -227,6 +231,8 @@ ProcessGame:
 				move.l	#0,(a0)
 				bsr		BigClean
 				bsr		TouchPlayerTracing
+				
+				bra		.EndProcessGame
 .PlayerMustNotDie:
 
 				lea		Ennemy01MoveInfo(pc),a3
@@ -242,6 +248,47 @@ ProcessGame:
 				bsr		UpdateTimer
 				
 				bsr		DrawAll
+.EndProcessGame:
+				rts
+
+
+DrawSpiraleAround:
+				move.l		SEntityMoveInfo_X(a3),d0		; X
+				move.l		SEntityMoveInfo_Y(a3),d1		; Y
+
+				lea     NbLoop(pc),a0
+				move.l	(a0),d2								; Num frame
+				
+				
+				bsr		PlotPixel
+				
+				rts
+				
+				
+;=============================================================================
+; Start Game Over
+;=============================================================================
+StartGameOver:
+				lea		GameMode(pc),a0
+				move.l	#GAME_STATUS_GAMEOVER,(a0)
+
+				lea     NbLoop(pc),a0
+                move.l  #0,(a0)
+				rts
+
+;=============================================================================
+; Process game over
+;=============================================================================
+ProcessGameOver:
+				lea     NbLoop(pc),a0
+				move.l	(a0),d0
+				cmp.l	#100,d0
+				beq		StartGame
+
+				lea		Text_GameOver(pc),a0
+				move.l	#128-13*8/2,d0
+				move.l	#128-4,d1
+				bsr		DisplayText
 
 				rts
 
@@ -443,6 +490,7 @@ CleanPreviousDisplay:
 ; Big clean to remove everything from both frame buffer and reset sprite back buffer
 ;=============================================================================
 BigClean:
+				bsr		SwapBuffer
 				bsr		CleanPreviousDisplay
 				bsr		SwapBuffer
 				bsr		CleanPreviousDisplay
@@ -495,7 +543,6 @@ DrawOneSprite:
 				lea     NbLoop(pc),a0
                 move.l  (a0),d0
 				and.l	#%1100,d0
-				move.l	#0,d0
 
 				lsr.l	#2,d0
 				lsl.l	#7,d0
@@ -813,7 +860,7 @@ MovePlayer:
 				bra		.EndMovePlayer
 .TestSpaceUp:
 				btst	#Keyboard01_Space,d4		; Press space to move while tracing
-				beq.s	.NoUp
+				beq		.NoUp
 				tst.w	d2							; empty ?
 				bne.s	.NoUp
 .FillUp:
@@ -829,6 +876,11 @@ MovePlayer:
 .NotStartTracingUp:
 				move.b	#1,(a5)					; Tracing flag
 				sub.l	#2,d1
+				bsr		PlotPixelRed2
+
+				move.l	SEntityMoveInfo_X(a3),d0
+				move.l	SEntityMoveInfo_Y(a3),d1
+				sub.l	#1,d1
 				bsr		PlotPixelRed2
 
 				move.l	SEntityMoveInfo_X(a3),d0
@@ -1326,6 +1378,15 @@ FillPlayField:
 
 				bsr		UpdateText
 
+; Win this level ?
+				lea		FillingCounter(pc),a6
+				move.l	(a6),d0
+				lsr.l	#8,d0
+				lsr.l	#8,d0
+				cmp.l	#75,d0
+				bmi.s	.NoWin
+				bsr		StartWinLevel
+.NoWin;				
                 movem.l (sp)+,d0-d7/a0-a6
 				rts
 
@@ -1395,7 +1456,7 @@ TouchPlayerTracing:
 				lea		PlayerLife(pc),a0
 				sub.b	#1,(a0)
 				bne.s	.NotGameOver
-				bsr		ResetQLix
+				bsr		StartGameOver
 .NotGameOver:				
 				bsr		DisplayLife
 				
@@ -1663,7 +1724,7 @@ UpdateTimer:
 				rts
 				
 .nomoretime:
-				bsr		ResetQLix
+				bsr		StartGameOver
 				rts
 				
 ;=============================================================================
@@ -1864,6 +1925,25 @@ DebugDisplayQLixColInfo:
 				movem.l (sp)+,d0-d7/a0-a6
 				rts
 
+				
+;=============================================================================
+; StartWinLevel
+;=============================================================================
+StartWinLevel:
+
+				lea		Score(pc),a6
+				move.l	(a6),d0
+				lea		PlayerLife(pc),a5
+				move.l	(a5),d1
+
+				bsr		ResetQLix
+
+				move.l	d0,(a6)
+				move.l	d1,(a5)
+
+				bsr		UpdateText
+				rts
+				
 ;=============================================================================
 ; ResetQLix
 ;=============================================================================
@@ -2614,7 +2694,10 @@ BufferNum:		dc.w	0
 NbLoop:			dc.l	0
 	even
 Text000:		dc.b	"00% / 75%",0
+	even
 Text_Score:		dc.b	"SCORE:0000000",0
+	even
+Text_GameOver:	dc.b	"..GAME OVER..",0
 	even
 
 SinTable:
