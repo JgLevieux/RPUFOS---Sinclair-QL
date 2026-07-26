@@ -77,12 +77,12 @@ Start:
 				move.l	#$20000,(a0)
 				bsr     ClearScreen
 
-				bsr		ResetQLix
+				;bsr		StartMenu
+				bsr		StartGame
+
 MainLoop:
 			; WaitVBlank
 				bsr		WaitVBlank
-
-				;bra		MainLoop
 				
 			ifd TIMER_MODE
 				move.b	#ScreenMode01,$18063			; Display screen 1
@@ -134,10 +134,91 @@ MainLoop:
 				btst	#Keyboard01_Enter,d4		; Press space to move while tracing
 				beq.s	.nobreakpoint
 				DBGBREAK
+				
 				;bsr		ClearScreen
 				;bsr		DebugDisplayQLixColInfo
 				;bsr		PlayTune
 .nobreakpoint:
+
+				lea		GameMode(pc),a0
+				move.l	(a0),d0
+
+				cmp.l	#GAME_STATUS_MENU,d0
+				beq.s   .CaseMenu
+
+				cmp.l	#GAME_STATUS_GAME,d0
+				beq.s   .CaseGame
+				
+				bra.s   .EndSwitch
+
+.CaseMenu:
+				bsr		ProcessMenu
+				bra.s   .EndSwitch
+.CaseGame:
+				bsr		ProcessGame
+				bra.s   .EndSwitch
+.EndSwitch:				
+
+				bsr		DrawVblTimer
+
+			ifd TIMER_MODE
+				DisplayOffForProfiling
+			endif
+				bra		MainLoop
+
+                rts
+
+;=============================================================================
+; Start Menu
+;=============================================================================
+StartMenu:
+				lea		LogoRetroProg(pc),a0
+				lea		$20000,a1
+				bsr		zx0_decompress
+
+				lea		LogoRetroProg(pc),a0
+				move.l	#$28000,a1
+				bsr		zx0_decompress
+				
+				lea		GameMode(pc),a0
+				move.l	#GAME_STATUS_MENU,(a0)
+
+				lea     NbLoop(pc),a0
+                move.l  #0,(a0)
+				
+				rts
+				
+;=============================================================================
+; Process Menu
+;=============================================================================
+ProcessMenu:
+				lea     NbLoop(pc),a0
+				move.l	(a0),d0
+				cmp.l	#50,d0
+
+
+
+				beq		StartGame
+
+				rts
+				
+;=============================================================================
+; Process game
+;=============================================================================
+StartGame:
+				lea		GameMode(pc),a0
+				move.l	#GAME_STATUS_GAME,(a0)
+
+				lea     NbLoop(pc),a0
+                move.l  #0,(a0)
+
+				bsr		ResetQLix
+				rts
+
+;=============================================================================
+; Process game
+;=============================================================================
+ProcessGame:
 				bsr		CleanPreviousDisplay
 
 				lea		PlayerMustDie(pc),a0
@@ -148,10 +229,10 @@ MainLoop:
 				bsr		TouchPlayerTracing
 .PlayerMustNotDie:
 
-				lea		Ennemy01(pc),a6
+				lea		Ennemy01MoveInfo(pc),a3
 				bsr		MoveEnnemy
 				
-				lea		Ennemy02(pc),a6
+				lea		Ennemy02MoveInfo(pc),a3
 				bsr		MoveEnnemy
 				
 				bsr		MovePlayer
@@ -161,15 +242,8 @@ MainLoop:
 				bsr		UpdateTimer
 				
 				bsr		DrawAll
-				
-				bsr		DrawVblTimer
 
-			ifd TIMER_MODE
-				DisplayOffForProfiling
-			endif
-				bra		MainLoop
-
-                rts
+				rts
 
 ;=============================================================================
 	include "controls.asm"
@@ -181,7 +255,7 @@ MainLoop:
 ;=============================================================================
 
 	even
-PlayerCoord:	dc.l	0,0
+GameMode:	dc.l		0
 	even
 PlayerCoordStartTracing:	dc.l	0,0				
 	even
@@ -203,14 +277,6 @@ FloodFillingStack:
 	even
 
 PlayerMustDie:	dc.l	0
-
-Ennemy01:
-		dc.l	0,0		; 0 : Coord, 4 : Coord Y
-		dc.b	0		; 8 : Current move offest
-	even
-Ennemy02:
-		dc.l	0,0		; 0 : Coord, 4 : Coord Y
-		dc.b	0		; 8 : Current move offest
 	even
 
 EnnemyMoveOffest:
@@ -224,6 +290,69 @@ EnnemyCoordForMoveOffest:
 	dc.b	0,2		; D
 	dc.b	-2,0	; L
 	dc.b	0,-2	; U
+
+	
+	RSRESET
+SEntityMoveInfo_X:			RS.L 1	; Current X
+SEntityMoveInfo_Y:			RS.L 1	; Current Y
+SEntityMoveInfo_fX:			RS.L 1	; Current X - 24:8 format
+SEntityMoveInfo_fY:			RS.L 1	; Current Y - 24:8 format
+SEntityMoveInfo_fSpeedX:	RS.L 1	; Speed X - 24:8 format
+SEntityMoveInfo_fSpeedY:	RS.L 1	; Speed Y - 24:8 format
+SEntityMoveInfo_NbMove:		RS.L 1	; Nb Move to do
+SEntityMoveInfo_XFinal:		RS.L 1	; Final X to set at final move (32:0)
+SEntityMoveInfo_YFinal:		RS.L 1	; Final Y to set at final move (32:0)
+SEntityMoveInfo_MoveOff:	RS.L 1	; Move offset for ennemies
+SEntityMoveInfo_SIZEOF:     RS.B 0
+
+PlayerMoveInfo:				dcb.b    SEntityMoveInfo_SIZEOF,0
+	even
+Ennemy01MoveInfo:			dcb.b    SEntityMoveInfo_SIZEOF,0
+	even
+Ennemy02MoveInfo:			dcb.b    SEntityMoveInfo_SIZEOF,0
+	even
+
+;=============================================================================
+; Move an entity
+; a3 = SEntityMoveInfo adress
+; d0 = 0 if no move done
+;=============================================================================
+MoveEntity:
+; Must move?
+				tst.l		SEntityMoveInfo_NbMove(a3)
+				beq.s		.NoMoveEntity
+
+; Last move?
+				sub.l		#1,SEntityMoveInfo_NbMove(a3)
+				beq.s		.EndOfMovingEntity
+
+; Move.
+				move.l		SEntityMoveInfo_fSpeedX(a3),d0
+				add.l		d0,SEntityMoveInfo_fX(a3)
+				move.l		SEntityMoveInfo_fSpeedY(a3),d0
+				add.l		d0,SEntityMoveInfo_fY(a3)
+				
+				move.l		SEntityMoveInfo_fX(a3),d0
+				lsr.l		#8,d0
+				move.l		d0,SEntityMoveInfo_X(a3)
+
+				move.l		SEntityMoveInfo_fY(a3),d0
+				lsr.l		#8,d0
+				move.l		d0,SEntityMoveInfo_Y(a3)
+				
+.EndMoveEntity:
+				moveq		#1,d0
+				rts
+
+.EndOfMovingEntity:
+				move.l		SEntityMoveInfo_XFinal(a3),SEntityMoveInfo_X(a3)
+				move.l		SEntityMoveInfo_YFinal(a3),SEntityMoveInfo_Y(a3)
+				moveq		#0,d0
+				rts
+
+.NoMoveEntity:
+				moveq		#0,d0
+				rts
 
 ;=============================================================================
 ; Clean all previous things displayed at the same time at the start of the frame
@@ -342,9 +471,9 @@ SaveOneSprite:
 				lsl.l	#6,d6
 				add.l	d6,a1
 
-				move.l	(a3),d0
+				move.l	SEntityMoveInfo_X(a3),d0
 				sub.l	#3,d0
-				move.l	4(a3),d1
+				move.l	SEntityMoveInfo_Y(a3),d1
 				sub.l	#3,d1
 				move.l	d0,(a1)
 				move.l	d1,4(a1)
@@ -366,6 +495,7 @@ DrawOneSprite:
 				lea     NbLoop(pc),a0
                 move.l  (a0),d0
 				and.l	#%1100,d0
+				move.l	#0,d0
 
 				lsr.l	#2,d0
 				lsl.l	#7,d0
@@ -374,9 +504,9 @@ DrawOneSprite:
 				add.l	d0,a1
 				add.l	d1,a1
 
-				move.l	(a3),d0
+				move.l	SEntityMoveInfo_X(a3),d0
 				sub.l	#3,d0
-				move.l	4(a3),d1
+				move.l	SEntityMoveInfo_Y(a3),d1
 				sub.l	#3,d1
 
 				lea		ScreenBase(pc),a0
@@ -396,16 +526,16 @@ DrawAll:
 
 ; Save ennemies 01 & 02
 				lea		Ennemy01Save(pc),a1
-				lea		Ennemy01(pc),a3
+				lea		Ennemy01MoveInfo(pc),a3
 				bsr		SaveOneSprite
 
 				lea		Ennemy02Save(pc),a1
-				lea		Ennemy02(pc),a3
+				lea		Ennemy02MoveInfo(pc),a3
 				bsr		SaveOneSprite
 				
 ; Save player
 				lea		PlayerSave(pc),a1
-				lea		PlayerCoord(pc),a3
+				lea		PlayerMoveInfo(pc),a3
 				bsr		SaveOneSprite
 
 ; Draw QLix
@@ -456,55 +586,119 @@ DrawAll:
 .ContinueDraw:
 ; Draw ennemies 01 & 02
 				lea		SpriteEnnemy_01(pc),a1
-				lea		Ennemy01(pc),a3
+				lea		Ennemy01MoveInfo(pc),a3
 				bsr		DrawOneSprite
 
 				lea		SpriteEnnemy_01(pc),a1
-				lea		Ennemy02(pc),a3
+				lea		Ennemy02MoveInfo(pc),a3
 				bsr		DrawOneSprite
 
 ; Draw player
 				lea		SpritePlayer_01(pc),a1
-				lea		PlayerCoord(pc),a3
+				lea		PlayerMoveInfo(pc),a3
 				bsr		DrawOneSprite
 
 				rts
-				
+
+;=============================================================================
+; Macro for Move Entity
+;=============================================================================
+	macro SetupMoveInfoUp
+				move.l	#0,SEntityMoveInfo_fSpeedX(a3)
+				move.l	#-256,SEntityMoveInfo_fSpeedY(a3)
+				move.l	#2,SEntityMoveInfo_NbMove(a3)
+				move.l	SEntityMoveInfo_X(a3),SEntityMoveInfo_XFinal(a3)
+				move.l	SEntityMoveInfo_Y(a3),SEntityMoveInfo_YFinal(a3)
+				sub.l	#2,SEntityMoveInfo_YFinal(a3)
+				move.l	SEntityMoveInfo_X(a3),d0
+				lsl.l	#8,d0
+				move.l	d0,SEntityMoveInfo_fX(a3)
+				move.l	SEntityMoveInfo_Y(a3),d0
+				lsl.l	#8,d0
+				move.l	d0,SEntityMoveInfo_fY(a3)
+	endm
+	macro SetupMoveInfoDown
+				move.l	#0,SEntityMoveInfo_fSpeedX(a3)
+				move.l	#256,SEntityMoveInfo_fSpeedY(a3)
+				move.l	#2,SEntityMoveInfo_NbMove(a3)
+				move.l	SEntityMoveInfo_X(a3),SEntityMoveInfo_XFinal(a3)
+				move.l	SEntityMoveInfo_Y(a3),SEntityMoveInfo_YFinal(a3)
+				add.l	#2,SEntityMoveInfo_YFinal(a3)
+				move.l	SEntityMoveInfo_X(a3),d0
+				lsl.l	#8,d0
+				move.l	d0,SEntityMoveInfo_fX(a3)
+				move.l	SEntityMoveInfo_Y(a3),d0
+				lsl.l	#8,d0
+				move.l	d0,SEntityMoveInfo_fY(a3)
+	endm
+	macro SetupMoveInfoRight
+				move.l	#256,SEntityMoveInfo_fSpeedX(a3)
+				move.l	#0,SEntityMoveInfo_fSpeedY(a3)
+				move.l	#2,SEntityMoveInfo_NbMove(a3)
+				move.l	SEntityMoveInfo_X(a3),SEntityMoveInfo_XFinal(a3)
+				move.l	SEntityMoveInfo_Y(a3),SEntityMoveInfo_YFinal(a3)
+				add.l	#2,SEntityMoveInfo_XFinal(a3)
+				move.l	SEntityMoveInfo_X(a3),d0
+				lsl.l	#8,d0
+				move.l	d0,SEntityMoveInfo_fX(a3)
+				move.l	SEntityMoveInfo_Y(a3),d0
+				lsl.l	#8,d0
+				move.l	d0,SEntityMoveInfo_fY(a3)
+	endm
+	macro SetupMoveInfoLeft
+				move.l	#-256,SEntityMoveInfo_fSpeedX(a3)
+				move.l	#0,SEntityMoveInfo_fSpeedY(a3)
+				move.l	#2,SEntityMoveInfo_NbMove(a3)
+				move.l	SEntityMoveInfo_X(a3),SEntityMoveInfo_XFinal(a3)
+				move.l	SEntityMoveInfo_Y(a3),SEntityMoveInfo_YFinal(a3)
+				sub.l	#2,SEntityMoveInfo_XFinal(a3)
+				move.l	SEntityMoveInfo_X(a3),d0
+				lsl.l	#8,d0
+				move.l	d0,SEntityMoveInfo_fX(a3)
+				move.l	SEntityMoveInfo_Y(a3),d0
+				lsl.l	#8,d0
+				move.l	d0,SEntityMoveInfo_fY(a3)
+	endm
+
 ;=============================================================================
 ; Move one ennemy
-; Input : a6 - ennemy info
+; Input : a3 - ennemy info
 ;=============================================================================
 MoveEnnemy:
+				bsr		MoveEntity
+				tst.l	d0
+				bne.w	.EnnemyCollision
+
 ; Get current col
 				;DBGBREAK
 				moveq	#0,d2
-				move.l	(a6),d0			; X
-				move.l	4(a6),d1		; Y
+				move.l	SEntityMoveInfo_X(a3),d0		; X
+				move.l	SEntityMoveInfo_Y(a3),d1		; Y
 				sub.w	#PLAYFIELD_START_X,d0
 				sub.w	#PLAYFIELD_START_Y,d1
 				bsr		GetQLixColInfo
 				move.l	d2,a5			; Save col info
 
 ; Next move according to the table offest
-				lea		EnnemyMoveOffest(pc),a3
+				lea		EnnemyMoveOffest(pc),a6
 				lea		EnnemyCoordForMoveOffest(pc),a4
 				moveq	#0,d0
 				moveq	#0,d1
 				moveq	#0,d2
 				moveq	#0,d3
-				move.b	8(a6),d3		; Get move offest table
+				move.l	SEntityMoveInfo_MoveOff(a3),d3		; Get move offest table
 				lsl.b	#2,d3			; *4
 				
 .TestNextMoveOffset:
-				move.b	(a3,d3.w),d2	; Get num coord for move offest
+				move.b	(a6,d3.w),d2	; Get num coord for move offest
 				cmp.b	#-1,d2
 				beq		.EnnemyLocked
 				move.b	d2,d7
 				add.b	#1,d3			; Next move offset if needed
 				add.b	d2,d2			; *2
 				
-				move.l	(a6),d5			; X
-				move.l	4(a6),d6		; Y
+				move.l	SEntityMoveInfo_X(a3),d5		; X
+				move.l	SEntityMoveInfo_Y(a3),d6		; Y
 				add.b	(a4,d2.w),d5
 				add.b	1(a4,d2.w),d6	; New coord to test
 
@@ -520,41 +714,39 @@ MoveEnnemy:
 				cmp.b	#1,d2
 				bne.s	.TestNextMoveOffset
 
-				move.b	d7,8(a6)		; Store new move offset
-				move.l	d5,(a6)			; New X
-				move.l	d6,4(a6)		; New Y
+				move.l	d7,SEntityMoveInfo_MoveOff(a3)		; Store new move offset
+				
+				move.l	SEntityMoveInfo_X(a3),d0		; X
+				move.l	SEntityMoveInfo_Y(a3),d1		; Y
+				cmp.l	d5,d0
+				beq.s	.EnnemyMoveY
+				cmp.l	d5,d0
+				bhi.s	.EnnemyMoveXLeft
+				SetupMoveInfoRight
+				rts
+.EnnemyMoveXLeft:
+				SetupMoveInfoLeft
+				rts
 
-; Draw ennemies
-				lea		SpriteEnnemy_01,a1
-
-				lea     NbLoop(pc),a0
-                move.l  (a0),d0
-				and.l	#%1100,d0
-
-				lsr.l	#2,d0
-				lsl.l	#7,d0
-				move.l	d0,d1
-				add.l	d1,d1
-				add.l	d0,a1
-				add.l	d1,a1
-
-				move.l	(a6),d0
-				sub.l	#4,d0
-				move.l	4(a6),d1
-				sub.l	#4,d1
-
-				lea		ScreenBase,a0
-				move.l	(a0),a0
-				;bsr		DisplaySprite8x8MaskedShifted
+.EnnemyMoveY:
+				cmp.l	d6,d1
+				bhi.s	.EnnemyMoveYUp
+				SetupMoveInfoDown
+				rts
+.EnnemyMoveYUp:
+				SetupMoveInfoUp
+				
+				rts
 
 ; Player collision
+.EnnemyCollision:
 DIST_COL_ENNEMY_PLAYER		equ 2
-				lea		PlayerCoord(pc),a0
-				move.l	(a0),d0
-				move.l	4(a0),d1
+				lea		PlayerMoveInfo(pc),a0
+				move.l	SEntityMoveInfo_X(a0),d0
+				move.l	SEntityMoveInfo_Y(a0),d1
 
-				move.l	(a6),d2
-				move.l	4(a6),d3
+				move.l	SEntityMoveInfo_X(a3),d2
+				move.l	SEntityMoveInfo_Y(a3),d3
 
 				sub.l	d0,d2
 				bpl.s	.nonegx
@@ -586,7 +778,11 @@ DIST_COL_ENNEMY_PLAYER		equ 2
 ;=============================================================================
 PLAYER_SPEED	equ		2
 MovePlayer:
-				lea		PlayerCoord(pc),a3		; a3 = Player coord adr
+				lea		PlayerMoveInfo(pc),a3		; a3 = Player coord adr
+				bsr		MoveEntity
+				tst.l	d0
+				bne.w	.EndMovePlayer
+
 				lea		PlayerCoordStartTracing(pc),a6
 
 ; Keyboard & collisions
@@ -598,16 +794,17 @@ MovePlayer:
 
 ; Can go Up ?
 				btst	#Keyboard01_Up,d4
-				beq.s	.NoUp
-				move.l	(a3),d0
-				move.l	4(a3),d1
-				sub.l	#PLAYER_SPEED,d1					; test next collision
+				beq.w	.NoUp
+				move.l	SEntityMoveInfo_X(a3),d0
+				move.l	SEntityMoveInfo_Y(a3),d1
+				sub.l	#2,d1					; test next collision
 				bsr		PlayerCanMove
 
 				cmp.w	#1,d2					; can move to ?
 				bne.s	.TestSpaceUp
 .MoveUp:
-				sub.l	#PLAYER_SPEED,4(a3) 	; If yes we move
+				SetupMoveInfoUp
+
 				tst.b	(a5)					; Finish tracing?
 				beq		.EndMovePlayer
 				bsr		FillPlayField
@@ -617,23 +814,26 @@ MovePlayer:
 .TestSpaceUp:
 				btst	#Keyboard01_Space,d4		; Press space to move while tracing
 				beq.s	.NoUp
-				tst.w	d2						; empty ?
+				tst.w	d2							; empty ?
 				bne.s	.NoUp
 .FillUp:
-				sub.l	#PLAYER_SPEED,4(a3)
-				move.l	(a3),d0
-				move.l	4(a3),d1
+				SetupMoveInfoUp
+
+				move.l	SEntityMoveInfo_X(a3),d0
+				move.l	SEntityMoveInfo_Y(a3),d1
 
 				tst.b	(a5)					; Start tracing?
 				bne.s	.NotStartTracingUp
 				move.l	d0,(a6)
 				move.l	d1,4(a6)
-				add.l	#PLAYER_SPEED,4(a6)
 .NotStartTracingUp:
 				move.b	#1,(a5)					; Tracing flag
+				sub.l	#2,d1
 				bsr		PlotPixelRed2
-				move.l	(a3),d0
-				move.l	4(a3),d1
+
+				move.l	SEntityMoveInfo_X(a3),d0
+				move.l	SEntityMoveInfo_Y(a3),d1
+				sub.l	#2,d1
 				move.l	#COL_INFO_TRACING,d2
 				sub.l	#PLAYFIELD_START_X,d0
 				sub.l	#PLAYFIELD_START_Y,d1
@@ -643,7 +843,7 @@ MovePlayer:
 
 ; Can go Down ?
 				btst	#Keyboard01_Down,d4
-				beq.s	.NoDown
+				beq.w	.NoDown
 				move.l	(a3),d0
 				move.l	4(a3),d1
 				add.l	#PLAYER_SPEED,d1					; test next collision
@@ -652,7 +852,8 @@ MovePlayer:
 				cmp.w	#1,d2					; can move to ?
 				bne.s	.TestSpaceDown
 .MoveDown:
-				add.l	#PLAYER_SPEED,4(a3) 				; If white we move
+				SetupMoveInfoDown
+
 				tst.b	(a5)					; Finish tracing?
 				beq		.EndMovePlayer
 				bsr		FillPlayField
@@ -665,19 +866,23 @@ MovePlayer:
 				tst.w	d2						; empty ?
 				bne.s	.NoDown
 .FillDown:
-				add.l	#PLAYER_SPEED,4(a3)
-				move.l	(a3),d0
-				move.l	4(a3),d1
+				SetupMoveInfoDown
+
+				move.l	SEntityMoveInfo_X(a3),d0
+				move.l	SEntityMoveInfo_Y(a3),d1
+
 				tst.b	(a5)					; Start tracing?
 				bne.s	.NotStartTracingDown
 				move.l	d0,(a6)
 				move.l	d1,4(a6)
-				sub.l	#PLAYER_SPEED,4(a6)
 .NotStartTracingDown:
 				move.b	#1,(a5)					; Tracing flag
+				add.l	#2,d1
 				bsr		PlotPixelRed2
-				move.l	(a3),d0
-				move.l	4(a3),d1
+
+				move.l	SEntityMoveInfo_X(a3),d0
+				move.l	SEntityMoveInfo_Y(a3),d1
+				add.l	#2,d1
 				move.l	#COL_INFO_TRACING,d2
 				sub.l	#PLAYFIELD_START_X,d0
 				sub.l	#PLAYFIELD_START_Y,d1
@@ -687,7 +892,7 @@ MovePlayer:
 
 ; Can go Right ?
 				btst	#Keyboard01_Right,d4
-				beq.s	.NoRight
+				beq.w	.NoRight
 				move.l	(a3),d0
 				move.l	4(a3),d1
 				add.l	#PLAYER_SPEED,d0					; test next collision
@@ -696,7 +901,8 @@ MovePlayer:
 				cmp.w	#1,d2					; can move to ?
 				bne.s	.TestSpaceRight
 .MoveRight:
-				add.l	#PLAYER_SPEED,(a3) 				; If white we move
+				SetupMoveInfoRight
+
 				tst.b	(a5)					; Finish tracing?
 				beq		.EndMovePlayer
 				bsr		FillPlayField
@@ -709,19 +915,23 @@ MovePlayer:
 				tst.w	d2						; empty ?
 				bne.s	.NoRight
 .FillRight:
-				add.l	#PLAYER_SPEED,(a3)
-				move.l	(a3),d0
-				move.l	4(a3),d1
+				SetupMoveInfoRight
+
+				move.l	SEntityMoveInfo_X(a3),d0
+				move.l	SEntityMoveInfo_Y(a3),d1
+
 				tst.b	(a5)					; Start tracing?
 				bne.s	.NotStartTracingRight
 				move.l	d0,(a6)
 				move.l	d1,4(a6)
-				sub.l	#PLAYER_SPEED,(a6)
 .NotStartTracingRight:
 				move.b	#1,(a5)					; Tracing flag
+				add.l	#2,d0
 				bsr		PlotPixelRed2
-				move.l	(a3),d0
-				move.l	4(a3),d1
+
+				move.l	SEntityMoveInfo_X(a3),d0
+				move.l	SEntityMoveInfo_Y(a3),d1
+				add.l	#2,d0
 				move.l	#COL_INFO_TRACING,d2
 				sub.l	#PLAYFIELD_START_X,d0
 				sub.l	#PLAYFIELD_START_Y,d1
@@ -731,7 +941,7 @@ MovePlayer:
 
 ; Can go Left ?
 				btst	#Keyboard01_Left,d4
-				beq.s	.NoLeft
+				beq.w	.NoLeft
 				move.l	(a3),d0
 				move.l	4(a3),d1
 				sub.l	#PLAYER_SPEED,d0					; test next collision
@@ -740,7 +950,8 @@ MovePlayer:
 				cmp.w	#1,d2					; can move to ?
 				bne.s	.TestSpaceLeft
 .MoveLeft:
-				sub.l	#PLAYER_SPEED,(a3) 				; If white we move
+				SetupMoveInfoLeft
+
 				tst.b	(a5)					; Finish tracing?
 				beq		.EndMovePlayer
 				bsr		FillPlayField
@@ -754,19 +965,23 @@ MovePlayer:
 				bne.s	.NoLeft
 
 .FillLeft:
-				sub.l	#PLAYER_SPEED,(a3)
-				move.l	(a3),d0
-				move.l	4(a3),d1
+				SetupMoveInfoLeft
+
+				move.l	SEntityMoveInfo_X(a3),d0
+				move.l	SEntityMoveInfo_Y(a3),d1
+
 				tst.b	(a5)					; Start tracing?
 				bne.s	.NotStartTracingLeft
 				move.l	d0,(a6)
 				move.l	d1,4(a6)
-				add.l	#PLAYER_SPEED,(a6)
 .NotStartTracingLeft:
 				move.b	#1,(a5)					; Tracing flag
+				sub.l	#2,d0
 				bsr		PlotPixelRed2
-				move.l	(a3),d0
-				move.l	4(a3),d1
+
+				move.l	SEntityMoveInfo_X(a3),d0
+				move.l	SEntityMoveInfo_Y(a3),d1
+				sub.l	#2,d0
 				move.l	#COL_INFO_TRACING,d2
 				sub.l	#PLAYFIELD_START_X,d0
 				sub.l	#PLAYFIELD_START_Y,d1
@@ -1166,10 +1381,11 @@ TouchPlayerTracing:
 				add.w	#1,d5
 				dbra	d7,.loopY
 
-				lea		PlayerCoord(pc),a0
+				lea		PlayerMoveInfo(pc),a0
 				lea		PlayerCoordStartTracing(pc),a1
-				move.l	(a1),(a0)
-				move.l	4(a1),4(a0)
+				move.l	(a1),SEntityMoveInfo_X(a0)
+				move.l	4(a1),SEntityMoveInfo_Y(a0)
+				move.l	#0,SEntityMoveInfo_NbMove(a0)
 
 				lea		PlayerIsTracing(pc),a5
 				move.b	#0,(a5)
@@ -1715,11 +1931,10 @@ COL_BORDER_SIZE equ	6
 				dbra	d7,.Border
 
 ; Init player vars
-				lea		PlayerCoord(pc),a0
-				move.l	#128,(a0)
-				move.l	#240-COL_BORDER_SIZE,4(a0)
-				move.l	#128,8(a0)
-				move.l	#240-COL_BORDER_SIZE,12(a0)
+				lea		PlayerMoveInfo(pc),a0
+				move.l	#128,SEntityMoveInfo_X(a0)
+				move.l	#240-COL_BORDER_SIZE,SEntityMoveInfo_Y(a0)
+				move.l	#0,SEntityMoveInfo_NbMove(a0)
 				lea		PlayerCoordStartTracing(pc),a0
 				move.l	#128,(a0)
 				move.l	#240-COL_BORDER_SIZE,4(a0)
@@ -1765,20 +1980,22 @@ COL_BORDER_SIZE equ	6
 ; Reset Ennemies Position
 ;=============================================================================
 ResetEnnemiesPosition:
-				lea		Ennemy01(pc),a0
-				move.l	#34+46,(a0)
-				move.l	#47+COL_BORDER_SIZE,4(a0)
-				move.b	#2,8(a0)
+				lea		Ennemy01MoveInfo(pc),a0
+				move.l	#34+46,SEntityMoveInfo_X(a0)
+				move.l	#47+COL_BORDER_SIZE,SEntityMoveInfo_Y(a0)
+				move.l	#0,SEntityMoveInfo_NbMove(a0)
+				move.l	#2,SEntityMoveInfo_MoveOff(a0)
 
 				lea		Ennemy01Save(pc),a0
 				move.b	#0,56(a0)
 				move.b	#0,56+64(a0)					; Invalidate both back buffer
 
 				
-				lea		Ennemy02(pc),a0
-				move.l	#221-46,(a0)
-				move.l	#47+COL_BORDER_SIZE,4(a0)
-				move.b	#0,8(a0)
+				lea		Ennemy02MoveInfo(pc),a0
+				move.l	#221-46,SEntityMoveInfo_X(a0)
+				move.l	#47+COL_BORDER_SIZE,SEntityMoveInfo_Y(a0)
+				move.l	#0,SEntityMoveInfo_NbMove(a0)
+				move.l	#0,SEntityMoveInfo_MoveOff(a0)
 
 				lea		Ennemy02Save(pc),a0
 				move.b	#0,56(a0)
@@ -2439,6 +2656,8 @@ SpriteEnnemy_04:	incbin		"Data\QLixEnnemy04.bin"
 SpriteHeart:	incbin			"Data\QLixHeart.bin"
 	even
 Font:			incbin 		"Data\Font8x8.bin"
+	even
+LogoRetroProg:			incbin 		"Data\logo.bin.zx0"
 	even
 
 PlayerSave:		dcb.b	(2*4+8*6+1+7)*2		; (2 coord.l (x,y) + sprite8x8 shifted (8 lines * 6 bytes) + 1 (is valid, if not cannot be back on screen) + 7 (padding for 64 bytes size)) * 2 framebuffer
