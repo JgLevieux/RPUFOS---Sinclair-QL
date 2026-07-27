@@ -18,7 +18,7 @@
 
 	macro CleanVarL
 		lea		\1(pc),\2 
-		clr.L	(\2)
+		clr.l	(\2)
 	endm
 
 	macro DBGENABLE

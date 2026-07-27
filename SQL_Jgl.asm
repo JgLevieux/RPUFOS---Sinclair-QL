@@ -236,31 +236,89 @@ ProcessGame:
 .PlayerMustNotDie:
 
 				lea		Ennemy01MoveInfo(pc),a3
-				bsr		MoveEnnemy
+				;bsr		MoveEnnemy
 				
 				lea		Ennemy02MoveInfo(pc),a3
-				bsr		MoveEnnemy
+				;bsr		MoveEnnemy
 				
 				bsr		MovePlayer
 				
-				bsr		MoveQLix
+				;bsr		MoveQLix
+				bsr		DrawSpiraleAround
 
-				bsr		UpdateTimer
+				;bsr		UpdateTimer
 				
 				bsr		DrawAll
 .EndProcessGame:
 				rts
 
+				
+SpiraleBackBuffer: dcb.l (32/2/4)*32+1,0
 
 DrawSpiraleAround:
-				move.l		SEntityMoveInfo_X(a3),d0		; X
-				move.l		SEntityMoveInfo_Y(a3),d1		; Y
+				lea		PlayerMoveInfo(pc),a3		; a3 = Player coord adr
+				lea		ScreenBase(pc),a4
+				move.l	(a4),a4
 
+				lea		SpiraleBackBuffer(pc),a1
+				tst.l	(a1)+
+				beq.s	.NoBackSpirale
+				move.l	SEntityMoveInfo_X(a3),d0		; X
+				move.l	SEntityMoveInfo_Y(a3),d1		; Y
+				sub.l	#16-3,d0
+				sub.l	#16-3,d1
+				move.l	a4,a0
+				bsr		Back32x32
+.NoBackSpirale:
+				move.l	SEntityMoveInfo_X(a3),d0		; X
+				move.l	SEntityMoveInfo_Y(a3),d1		; Y
+				sub.l	#16-3,d0
+				sub.l	#16-3,d1
+				move.l	a4,a0
+				lea		SpiraleBackBuffer(pc),a1
+				move.l	#1,(a1)+
+				bsr		Save32x32
+				
 				lea     NbLoop(pc),a0
-				move.l	(a0),d2								; Num frame
+				move.l	(a0),d7								; Num frame
+				;moveq	#64,d7
+
+                move.w  d7,d6
+				add		d6,d6
+                lea     SinTable6(pc),a6
+				moveq	#0,d5
+                andi.w  #127,d6
+				move.b	(a6,d6.w),d5
+				add.b	#6,d5
+				lsl.l	#7,d5
+
+				move.l	#16-1,d4
+.LoopSpirale:
+                lea     SinTable13(pc),a6
+
+                andi.w  #127,d7
+                move.w  d7,d6
+				add.w	d5,d6
+				moveq	#0,d3
+                move.b  (a6,d6.w),d3    				; Sin(Angle)
+				ext.w	d3
+				move.l	SEntityMoveInfo_X(a3),d0		; X
+				add.w	d3,d0
+
+                move.w  d7,d6
+                addi.w  #32,d6
+                andi.w  #127,d6
+				add.w	d5,d6
+				moveq	#0,d3
+                move.b  (a6,d6.w),d3    				; Cos(Angle)
+				ext.w	d3
+				move.l	SEntityMoveInfo_Y(a3),d1		; Y
+				add.w	d3,d1
 				
+				bsr		PlotPixelWhite
 				
-				bsr		PlotPixel
+				add.l	#128/16,d7
+				dbra	d4,.LoopSpirale
 				
 				rts
 				
@@ -880,11 +938,6 @@ MovePlayer:
 
 				move.l	SEntityMoveInfo_X(a3),d0
 				move.l	SEntityMoveInfo_Y(a3),d1
-				sub.l	#1,d1
-				bsr		PlotPixelRed2
-
-				move.l	SEntityMoveInfo_X(a3),d0
-				move.l	SEntityMoveInfo_Y(a3),d1
 				sub.l	#2,d1
 				move.l	#COL_INFO_TRACING,d2
 				sub.l	#PLAYFIELD_START_X,d0
@@ -1386,7 +1439,7 @@ FillPlayField:
 				cmp.l	#75,d0
 				bmi.s	.NoWin
 				bsr		StartWinLevel
-.NoWin;				
+.NoWin:
                 movem.l (sp)+,d0-d7/a0-a6
 				rts
 
@@ -1934,12 +1987,12 @@ StartWinLevel:
 				lea		Score(pc),a6
 				move.l	(a6),d0
 				lea		PlayerLife(pc),a5
-				move.l	(a5),d1
+				move.b	(a5),d1
 
 				bsr		ResetQLix
 
 				move.l	d0,(a6)
-				move.l	d1,(a5)
+				move.b	d1,(a5)
 
 				bsr		UpdateText
 				rts
@@ -2021,6 +2074,7 @@ COL_BORDER_SIZE equ	6
 
 				CleanVarB PlayerIsTracing,a0
 				CleanVarL FillingCounter,a0
+				CleanVarL PreviousFillingCounter,a0
 				CleanVarL Score,a0
 				CleanVarL PlayerMustDie,a0
 				lea		PlayerLife(pc),a0
@@ -2443,6 +2497,71 @@ BackSprite8x8Shifted:
 				move.l	(a1)+,(a0)+
 				move.w	(a1)+,(a0)+
 				rts
+
+
+;=============================================================================
+; Save background, 32x32 (align to a word)
+; Input : -
+;		d0.l = x
+;		d1.l = y
+;		a0 = screen base
+;		a1 = backup buffer
+; Output : -
+; Destroy :
+;		d0, d1
+;		a0, a1
+;=============================================================================
+Save32x32:
+				lsr.l	#2,d0			; /4, 4 pixels per word.
+				add.l	d0,d0			; *2
+				lsl.l	#7,d1			; y*128
+				add.l	d0,d1			; +y screen +x screen
+				add.l	d1,a0			; dest adr
+						
+		rept 31	; lines
+				move.l	(a0)+,(a1)+
+				move.l	(a0)+,(a1)+
+				move.l	(a0)+,(a1)+
+				move.l	(a0)+,(a1)+
+				lea		128-4*4(a0),a0
+		endr
+				move.l	(a0)+,(a1)+
+				move.l	(a0)+,(a1)+
+				move.l	(a0)+,(a1)+
+				move.l	(a0)+,(a1)+
+				rts
+
+;=============================================================================
+; Save background, 32x32 (align to a word)
+; Input : -
+;		d0.l = x
+;		d1.l = y
+;		a0 = screen base
+;		a1 = backup buffer
+; Output : -
+; Destroy :
+;		d0, d1
+;		a0, a1
+;=============================================================================
+Back32x32:
+				lsr.l	#2,d0			; /4, 4 pixels per word.
+				add.l	d0,d0			; *2
+				lsl.l	#7,d1			; y*128
+				add.l	d0,d1			; +y screen +x screen
+				add.l	d1,a0			; dest adr
+						
+		rept 31	; lines
+				move.l	(a1)+,(a0)+
+				move.l	(a1)+,(a0)+
+				move.l	(a1)+,(a0)+
+				move.l	(a1)+,(a0)+
+				lea		128-4*4(a0),a0
+		endr
+				move.l	(a1)+,(a0)+
+				move.l	(a1)+,(a0)+
+				move.l	(a1)+,(a0)+
+				move.l	(a1)+,(a0)+
+				rts
 				
 ;=============================================================================
 ; Display a sprite, 8x8 no mask, no shifting, !!! no clipping !!!
@@ -2658,29 +2777,6 @@ ClearScreen:
                 rts
 				
 ; =============================================================================
-;  Obtention Sinus / Cosinus
-;  Entrée : d0 = Angle (0-255)
-;  Sorties : d2 = Sinus, d3 = Cosinus
-; =============================================================================
-GetSinCos:
-                andi.w  #255,d0          	; Écrêtage de sécurité de l'angle d'entrée
-
-                ; Extraction du Sinus
-                move.w  d0,d2
-                add.w   d2,d2           	; d2 * 2 pour indexation sur mots (16-bit)
-                lea     SinTable(pc),a1
-                move.w  (a1,d2.w),d2    	; d2 = Sin(Angle)
-
-                ; Extraction du Cosinus
-                move.w  d0,d3
-                addi.w  #64,d3				; Ajout du quart de période
-                andi.w  #255,d3          	; Écrêtage
-                add.w   d3,d3
-                move.w  (a1,d3.w),d3    	; d2 = Cos(Angle)
-
-                rts
-				
-; =============================================================================
 ;  ZONE DE DONNÉES / VARIABLES
 ; =============================================================================
 				even
@@ -2700,25 +2796,8 @@ Text_Score:		dc.b	"SCORE:0000000",0
 Text_GameOver:	dc.b	"..GAME OVER..",0
 	even
 
-SinTable:
-                dc.w    0, 6, 13, 19, 25, 31, 37, 44, 50, 56, 62, 68, 74, 80, 86, 92
-                dc.w    98, 103, 109, 115, 120, 126, 131, 136, 142, 147, 152, 157, 162, 167, 171, 176
-                dc.w    180, 185, 189, 193, 197, 201, 205, 208, 212, 215, 219, 222, 225, 228, 231, 233
-                dc.w    236, 238, 241, 243, 245, 247, 248, 250, 251, 253, 254, 254, 255, 255, 255, 255
-                dc.w    255, 255, 255, 255, 254, 254, 253, 251, 250, 248, 247, 245, 243, 241, 238, 236
-                dc.w    233, 231, 228, 225, 222, 219, 215, 212, 208, 205, 201, 197, 193, 189, 185, 180
-                dc.w    176, 171, 167, 162, 157, 152, 147, 142, 136, 131, 126, 120, 115, 109, 103, 98
-                dc.w    92, 86, 80, 74, 68, 62, 56, 50, 44, 37, 31, 25, 19, 13, 6, 0
-                dc.w    0, -6, -13, -19, -25, -31, -37, -44, -50, -56, -62, -68, -74, -80, -86, -92
-                dc.w    -98, -103, -109, -115, -120, -126, -131, -136, -142, -147, -152, -157, -162, -167, -171, -176
-                dc.w    -180, -185, -189, -193, -197, -201, -205, -208, -212, -215, -219, -222, -225, -228, -231, -233
-                dc.w    -236, -238, -241, -243, -245, -247, -248, -250, -251, -253, -254, -254, -255, -255, -255, -255
-                dc.w    -255, -255, -255, -255, -254, -254, -253, -251, -250, -248, -247, -245, -243, -241, -238, -236
-                dc.w    -233, -231, -228, -225, -222, -219, -215, -212, -208, -205, -201, -197, -193, -189, -185, -180
-                dc.w    -176, -171, -167, -162, -157, -152, -147, -142, -136, -131, -126, -120, -115, -109, -103, -98
-                dc.w    -92, -86, -80, -74, -68, -62, -56, -50, -44, -37, -31, -25, -19, -13, -6, 0
-	even
-
+	include "sinus.asm"
+	
 SpritePlayer_01:	incbin		"Data\QLixPlayer01.bin"
 	even
 SpritePlayer_02:	incbin		"Data\QLixPlayer02.bin"

@@ -110,7 +110,7 @@ GetPixel:
 ;		d2, d3
 ;		a1
 ;
-; Bits configuration for 4 pixels on 2 word
+; Bits configuration for 4 pixels on 2 bytes (1 word)
 ; G0 F0 G1 F1 G2 F2 G3 F3
 ; R0 B0 R1 B1 R2 B2 R3 B3
 ;=============================================================================
