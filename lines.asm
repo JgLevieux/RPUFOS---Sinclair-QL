@@ -400,7 +400,7 @@ DrawLineQLix:
 ; Output : -
 ; Destroy : Nothing
 ;
-; Note : Code generated with AI.
+; Note : Original code generated with AI.
 ; TODO : Probably possible to make it faster for black and white (no need to read VRAM?).
 ;=============================================================================
 

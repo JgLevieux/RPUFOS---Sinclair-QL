@@ -1,5 +1,6 @@
+	even
 	include "macros.asm"
-
+	even
 ; =============================================================================
 BARE_METAL			equ		1
 
@@ -70,17 +71,18 @@ Start:
 			; Setup double buffering & first clear
 				move.b	#ScreenMode01,$18063
 			ifd DOUBLE_BUFFERING				
-				lea		ScreenBase(pc),a0
-				move.l	#$28000,(a0)
+				move.l	#$28000,a0
 				bsr     ClearScreen
 			endif
 			
-				lea		ScreenBase(pc),a0
-				move.l	#$20000,(a0)
+				move.l	#$20000,a0
 				bsr     ClearScreen
 
-				;bsr		StartMenu
-				bsr		StartGame
+				lea		ScreenBase(pc),a0
+				move.l	#$20000,(a0)
+
+				bsr		StartMenu
+				;bsr		StartGame
 
 MainLoop:
 			; WaitVBlank
@@ -135,7 +137,9 @@ MainLoop:
 				move.b	1(a1),d4					; d4 = bits clavier
 				btst	#Keyboard01_Enter,d4		; Press space to move while tracing
 				beq.s	.nobreakpoint
-				DBGBREAK
+				;DBGBREAK
+				
+				bsr			SoundTest
 				
 				;bsr		ClearScreen
 				;bsr		DebugDisplayQLixColInfo
@@ -180,7 +184,7 @@ MainLoop:
 				nop
 .EndSwitch:				
 
-				bsr		DrawVblTimer
+				;bsr		DrawVblTimer
 
 			ifd TIMER_MODE
 				DisplayOffForProfiling
@@ -189,6 +193,23 @@ MainLoop:
 
                 rts
 
+;=============================================================================
+	even
+	include "controls.asm"
+	even
+	include "sound.asm"
+	even
+	include "random.asm"
+	even
+	include "unzx0_68000.asm"
+	even
+	include "PlotPixel.asm"
+	even
+	include "Lines.asm"
+	even
+	include "sinus.asm"
+;=============================================================================
+	even
 ;=============================================================================
 ; Set Game Status
 ; d0 = GAME_STATUS_???
@@ -209,35 +230,123 @@ SetGameStatus:
 ; Start Menu
 ;=============================================================================
 StartMenu:
-				lea		LogoRetroProg(pc),a0
+			ifd DOUBLE_BUFFERING				
+				move.l	#$28000,a0
+				bsr     ClearScreen
+			endif
+			
+				move.l	#$20000,a0
+				bsr     ClearScreen
+
+				lea		QLixLogoCompressed(pc),a0
 				lea		$20000,a1
 				bsr		zx0_decompress
 
-				lea		LogoRetroProg(pc),a0
+				lea		QLixLogoCompressed(pc),a0
 				move.l	#$28000,a1
 				bsr		zx0_decompress
 				
 				move.l	#GAME_STATUS_MENU,d0
 				bsr		SetGameStatus
+
+				lea		Text_Move(pc),a0
+				move.l	#48,d0
+				move.l	#8*12,d1
+				bsr		DisplayText
+
+				lea		Text_Trace(pc),a0
+				move.l	#48,d0
+				move.l	#8*15,d1
+				bsr		DisplayText
+				
+				move.l	#48-24,d0
+				move.l	#8*15+4,d1
+				move.l	#48-8,d4
+				move.l	#8*15+4,d5
+				move.l	#ColorPixelRed,d6
+				bsr		DrawLine
+
+				lea		Text_AvoidEnnemies(pc),a0
+				move.l	#48,d0
+				move.l	#8*18,d1
+				bsr		DisplayText
+
+				lea		Text_AvoidQLix(pc),a0
+				move.l	#48,d0
+				move.l	#8*21,d1
+				bsr		DisplayText
+
+				lea		Text_Bottom01(pc),a0
+				move.l	#0,d0
+				move.l	#8*30,d1
+				bsr		DisplayText
+
+				lea		Text_Bottom02(pc),a0
+				move.l	#0,d0
+				move.l	#8*31,d1
+				bsr		DisplayText
+				
+				lea		Ennemy01MoveInfo(pc),a3
+				move.l	#48-16,SEntityMoveInfo_X(a3)
+				move.l	#8*18+3,SEntityMoveInfo_Y(a3)
+				lea		Ennemy02MoveInfo(pc),a3
+				move.l	#48-16,SEntityMoveInfo_X(a3)
+				move.l	#8*18+3,SEntityMoveInfo_Y(a3)
+
+				lea		PlayerMoveInfo(pc),a3
+				move.l	#48-16,SEntityMoveInfo_X(a3)
+				move.l	#8*12+3,SEntityMoveInfo_Y(a3)
+
+				lea		QLixCoord(pc),a3
+				move.l	#(33)*256,(a3)
+				move.l	#(8*21)*256,4(a3)
+				move.l	#(48-8)*256,8(a3)
+				move.l	#(8*21+8)*256,12(a3)
+
+				lea		Music_OdeALaJoie(pc),a0
+				bsr		StartMusic
 				rts
 				
 ;=============================================================================
 ; Process Menu
 ;=============================================================================
 ProcessMenu:
-				lea     NbLoop(pc),a0
-				move.l	(a0),d0
-				cmp.l	#50,d0
-				beq		StartGame
+				lea		Keyboard(pc),a1
+				move.b	1(a1),d4					; d4 = bits clavier
+				btst	#Keyboard01_Space,d4		; Press space to move while tracing
+				beq.s	.WaitOnMenu
 
+				bsr		StopSound
+				bsr		StartGame
+				rts
+.WaitOnMenu:
+				lea     NbLoop(pc),a0
+				move.l	(a0),d7
+
+				lea		Text_PressSpaceEmpty(pc),a0
+				btst	#4,d7
+				beq.s	.NoSpace
+				lea		Text_PressSpace(pc),a0
+.NoSpace:
+				move.l	#128-11*8/2,d0
+				move.l	#8*26,d1
+				bsr		DisplayText
+
+				bsr		CleanPreviousDisplay
+				bsr		DrawAll
+
+				bsr		PlayMusic
 				rts
 				
 ;=============================================================================
-; Process game
+; Start Game Start
 ;=============================================================================
 StartGame:
 				move.l	#GAME_STATUS_GAMESTART,d0
 				bsr		SetGameStatus
+
+				lea		Music_GameStart(pc),a0
+				bsr		StartMusic
 
 				bsr		ResetQLix
 				rts
@@ -250,7 +359,7 @@ ProcessGameLooseLife:
 
 				lea     NbLoop(pc),a0
 				move.l	(a0),d0
-				cmp.l	#50,d0
+				cmp.l	#90,d0
 				bne.s	.NotEndingGameLooseLife
 
 				bsr		BigClean
@@ -261,13 +370,26 @@ ProcessGameLooseLife:
 
 				move.l	#GAME_STATUS_GAMESTART,d0
 				bsr		SetGameStatus
+				bsr		StopSound
+				lea		Music_GameStart(pc),a0
+				bsr		StartMusic
+
 
 				bsr		TouchPlayerTracing			; Can set GAME_SATUS at Gameover
 				rts
 .NotEndingGameLooseLife:
 
+				lea     NbLoop(pc),a0
+				move.l	(a0),d0
+				cmp.l	#50,d0
+				bhi.s	.NoSpirale
 				bsr		DrawSpiraleAround
+.NoSpirale:
+
 				bsr		DrawAll
+
+				bsr		PlayMusic
+
 				rts
 
 
@@ -277,7 +399,7 @@ ProcessGameLooseLife:
 ProcessGameStart:
 				lea     NbLoop(pc),a0
 				move.l	(a0),d0
-				cmp.l	#50,d0
+				cmp.l	#75,d0
 				bne.s	.NotEndingGameStart
 
 				bsr		BigClean
@@ -288,12 +410,21 @@ ProcessGameStart:
 
 				move.l	#GAME_STATUS_GAME,d0
 				bsr		SetGameStatus
+				bsr		StopSound
 				rts
 .NotEndingGameStart:
 
 				bsr		CleanPreviousDisplay
+
+				lea     NbLoop(pc),a0
+				move.l	(a0),d0
+				cmp.l	#50,d0
+				bhi.s	.NoSpirale
 				bsr		DrawSpiraleAround
+.NoSpirale:
 				bsr		DrawAll
+
+				bsr		PlayMusic
 				rts
 
 				
@@ -351,8 +482,8 @@ DrawSpiraleAround:
 				moveq	#0,d5
                 andi.w  #127,d6
 				move.b	(a6,d6.w),d5
-				add.b	#6,d5
-				lsl.l	#7,d5
+				add.b	#6,d5				; between 0 & 11
+				lsl.l	#7,d5				; x128 to change sin table
 
 				move.l	#16-1,d4
 .LoopSpirale:
@@ -395,6 +526,9 @@ ProcessGame:
 				beq.s	.PlayerMustNotDie
 				move.l	#0,(a0)
 
+				lea		Music_LifeLost(pc),a0
+				bsr		StartMusic
+
 				move.l	#GAME_STATUS_GAMELOOSELIFE,d0
 				bsr		SetGameStatus
 				rts
@@ -421,32 +555,54 @@ ProcessGame:
 StartGameOver:
 				move.l	#GAME_STATUS_GAMEOVER,d0
 				bsr		SetGameStatus
+
+				lea		Music_GameOver(pc),a0
+				bsr		StartMusic
 				rts
 
 ;=============================================================================
 ; Process game over
 ;=============================================================================
 ProcessGameOver:
+				lea		Keyboard(pc),a1
+				move.b	1(a1),d4					; d4 = bits clavier
+				btst	#Keyboard01_Space,d4		; Press space to move while tracing
+				beq.s	.WaitOnGameOver
+
+				bsr		StopSound
+				bsr		StartMenu
+				rts
+.WaitOnGameOver:
 				lea     NbLoop(pc),a0
-				move.l	(a0),d0
-				cmp.l	#100,d0
-				beq		StartGame
+				move.l	(a0),d7
 
 				lea		Text_GameOver(pc),a0
 				move.l	#128-13*8/2,d0
 				move.l	#128-4,d1
 				bsr		DisplayText
 
+				lea		Text_GameOverScore02(pc),a0
+				lea		Score(pc),a6
+				move.l	(a6),d0
+				bsr		NumberToAscii_000000
+
+				lea		Text_GameOverScore01(pc),a0
+				move.l	#128-18*8/2,d0
+				move.l	#128+4+8,d1
+				bsr		DisplayText
+
+				lea		Text_PressSpaceEmpty(pc),a0
+				btst	#4,d7
+				beq.s	.NoSpace
+				lea		Text_PressSpace(pc),a0
+.NoSpace:
+				move.l	#128-11*8/2,d0
+				move.l	#128+4+8*8,d1
+				bsr		DisplayText
+				
+				bsr		PlayMusic
 				rts
 
-;=============================================================================
-	include "controls.asm"
-	include "sound.asm"
-	include "random.asm"
-	include "unzx0_68000.asm"
-	include "PlotPixel.asm"
-	include "Lines.asm"
-;=============================================================================
 
 	even
 GameMode:	dc.l		0
@@ -478,12 +634,13 @@ EnnemyMoveOffest:
 	dc.b	1,2,0,-1 ; D L R
 	dc.b	2,3,1,-1 ; L U D
 	dc.b	3,0,2,-1 ; U R L
-
+	even
 EnnemyCoordForMoveOffest:
 	dc.b	2,0		; R
 	dc.b	0,2		; D
 	dc.b	-2,0	; L
 	dc.b	0,-2	; U
+	even
 
 	
 	RSRESET
@@ -1805,12 +1962,12 @@ UpdateText:
 				bsr		DisplayText
 
 ; Score.
-				lea		Text_Score+6(pc),a0
+				lea		Text_Score02(pc),a0
 				lea		Score(pc),a6
 				move.l	(a6),d0
 				bsr		NumberToAscii_000000
 
-				lea		Text_Score(pc),a0
+				lea		Text_Score01(pc),a0
 				move.l	#8*5,d0
 				move.l	#243,d1
 				bsr		DisplayText
@@ -2083,6 +2240,7 @@ StartWinLevel:
 				move.l	d0,(a6)
 				move.b	d1,(a5)
 
+				bsr		DisplayLife
 				bsr		UpdateText
 				rts
 				
@@ -2841,11 +2999,9 @@ DrawVblTimer:
 
 ; =============================================================================
 ; Clear screen
+; a0 - Screen adr
 ; =============================================================================
 ClearScreen:
-				lea     ScreenBase(pc),a0
-				move.l  (a0),a0
-
                 moveq   #0,d0
                 move.l  d0,d1
                 move.l  d0,d2
@@ -2871,6 +3027,7 @@ ClearScreen:
 				even
 ScreenBase:			dc.l	$20000
 ScreenBaseFront:	dc.l	$28000
+	even
 
 VBlankTimer:		dc.l	0
 	even
@@ -2878,15 +3035,22 @@ BufferNum:		dc.w	0
 	even
 NbLoop:			dc.l	0
 	even
-Text000:		dc.b	"00% / 75%",0
-	even
-Text_Score:		dc.b	"SCORE:0000000",0
-	even
-Text_GameOver:	dc.b	"..GAME OVER..",0
+Text000:				dc.b	"00% / 75%",0
+Text_Score01:			dc.b	"SCORE:"
+Text_Score02:			dc.b	"0000000",0
+Text_GameOver:			dc.b	"..GAME@OVER..",0
+Text_GameOverScore01:	dc.b	"YOUR@SCORE:"
+Text_GameOverScore02:	dc.b	"0000000",0
+Text_PressSpace:		dc.b	"PRESS@SPACE",0
+Text_PressSpaceEmpty:	dc.b	"@@@@@@@@@@@",0
+Text_Move:				dc.b	"MOVE WITH ARROWS",0
+Text_Trace:				dc.b	"SPACE TO TRACE",0
+Text_AvoidEnnemies:		dc.b	"AVOID ENNEMIES",0
+Text_AvoidQLix:			dc.b	"AVOID QLIX",0
+Text_Bottom01:			dc.b	"          QLIX FOR QL",0
+Text_Bottom02:			dc.b	" BY JGL FOR RPUFOS GAMEJAM 2026",0
 	even
 
-	include "sinus.asm"
-	
 SpritePlayer_01:	incbin		"Data\QLixPlayer01.bin"
 	even
 SpritePlayer_02:	incbin		"Data\QLixPlayer02.bin"
@@ -2912,18 +3076,24 @@ LogoRetroProg:			incbin 		"Data\logo.bin.zx0"
 	even
 
 PlayerSave:		dcb.b	(2*4+8*6+1+7)*2		; (2 coord.l (x,y) + sprite8x8 shifted (8 lines * 6 bytes) + 1 (is valid, if not cannot be back on screen) + 7 (padding for 64 bytes size)) * 2 framebuffer
+	even
 Ennemy01Save:	dcb.b	(2*4+8*6+1+7)*2		; (2 coord.l (x,y) + sprite8x8 shifted (8 lines * 6 bytes) + 1 (is valid, if not cannot be back on screen) + 7 (padding for 64 bytes size)) * 2 framebuffer
+	even
 Ennemy02Save:	dcb.b	(2*4+8*6+1+7)*2		; (2 coord.l (x,y) + sprite8x8 shifted (8 lines * 6 bytes) + 1 (is valid, if not cannot be back on screen) + 7 (padding for 64 bytes size)) * 2 framebuffer
 	
+	even
 	
 				dcb.b	2048,0
 TopOfStack:
 	even
 
-QLixBackgroundCompressed:
-	incbin		"Data\QLixBackground.bin.zx0"
+QLixBackgroundCompressed:	incbin		"Data\QLixBackground.bin.zx0"
 	even
-QLixCollision:	dcb.b	(192/2)*(192/2),0
+QLixLogoCompressed:			incbin		"Data\QLixLogo.bin.zx0"
 	even
+
+QLixCollision:				dcb.b	(192/2)*(192/2),0
+	even
+
 
 	end

@@ -1,4 +1,4 @@
-; Note : From sample from https://www.chibiakumas.com/68000/sinclairql.php
+; Note : Based from sample from https://www.chibiakumas.com/68000/sinclairql.php
 
 SoundTest:
 				lea		SoundCommand(pc),a3   ; These three lines
@@ -14,20 +14,66 @@ SoundTest:
         dc.b	$20			; Pitch 1
         dc.b	$F0			; Pitch 2
         dc.w	0			; interval between steps (0,0),
-        dc.w	13889		; Duration (65535)
+        dc.b	0,100		; Duration (65535)
         dc.b	$1			; step in pitch (4bit) / wrap (4bit)
         dc.b	$0			; randomness of step (4bit) / fuzziness (4bit)
         dc.b	1			; No return parameters       
 	even
 
-	
-PlayTune:
-        lea     TuneData(pc),a2
 
-.loop:
-        move.w  (a2)+,d1
-        beq.s   .end				; End ?
-        move.w  (a2)+,d2
+FrameBeforeNextSound:	dc.l	0
+CurrentNote:			dc.l	0
+CurrentMusic:			dc.l	0
+
+;=============================================================================
+; Stop sound
+;=============================================================================
+StopSound:
+        lea     SilentCommand(pc),a3
+        move.b  #$11,d0
+        trap    #1
+		rts
+
+;=============================================================================
+; Start Music
+; a0 = Music adr
+;=============================================================================
+StartMusic:
+		lea		CurrentMusic(pc),a6
+		move.l	a0,(a6)
+
+		lea		FrameBeforeNextSound(pc),a0
+		lea		CurrentNote(pc),a1
+		move.l	#0,(a0)
+		move.l	#0,(a1)
+		
+		rts
+
+;=============================================================================
+; Play Music
+; a0 = Music adr
+;=============================================================================
+PlayMusic:
+		;DBGBREAK
+
+		lea		FrameBeforeNextSound(pc),a0
+		move.l	(a0),d0
+		bne.s	.EndPlayTune
+
+		lea		CurrentNote(pc),a1
+		move.l	(a1),d0
+		lsl.l	#2,d0
+		add.l	#1,(a1)
+
+        lea     CurrentMusic(pc),a2
+		move.l	(a2),a2
+		add.l	d0,a2
+
+        move.w  0(a2),d1
+        beq.s   .EndOfTune
+		moveq	#0,d2
+        move.w  2(a2),d2			; Time
+		move.l	d2,(a0)
 
         cmpi.w  #$FFFF,d1			; Silence ?
         beq.s   .silence
@@ -37,37 +83,27 @@ PlayTune:
         move.b  d1,6(a3)             ; Pitch 1
         move.b  d1,7(a3)             ; Pitch 2 
 
-        move.w  d2,d3
-		lsl.w	#4,d3
-        ;lsr.w   #8,d3                
         move.b  #0,10(a3)             
-        move.b  #$80,11(a3)             ; Duration, look like nothing above $FF works
+        move.b  d2,11(a3)
 
         ; Appel système
         move.b  #$11,d0              
         trap    #1
-		
-		nop
-		nop
-		
-		;bra.s	.wait_note
+		bra		.EndPlayTune
 
-; --- Wait before next note.
 .silence:
-     ;lea     SilentCommand(pc),a3   ; These three lines
-     ;move.b   #$11,d0    ; Stop the note
-     ;trap    #1
+		bsr		StopSound
 
-.wait_note:
-		bsr		WaitVBlank
-        subq.w  #1,d2
-        bne.s   .wait_note
-
-        bra.s   .loop
-
-.end:
+.EndPlayTune:
+		sub.l	#1,(a0)
         rts
 
+.EndOfTune:
+		move.l	#0,(a0)
+		move.l	#0,(a1)
+		rts
+		
+		
     even
 
 SilentCommand:
@@ -84,150 +120,199 @@ SoundBlock:
         dc.b	$20			; Pitch 1
         dc.b	$F0			; Pitch 2
         dc.w	0			; interval between steps (0,0),
-        dc.w	13889		; Duration  - 13889 = 1s ?
+        dc.b	50,0		; Duration
         dc.b	$1			; step in pitch (4bit) / wrap (4bit)
         dc.b	$0			; randomness of step (4bit) / fuzziness (4bit)
         dc.b	1			; No return parameters       
     even
 
-; =======================================================
-; DICTIONNAIRE DES NOTES (Échelle logarithmique QL IPC)
-; =======================================================
+; ====================================================================
+; DICTIONNAIRE UNIVERSEL DES NOTES - SINCLAIR QL IPC
+; Basé sur N_DO_4 = $50 (80 en décimal). Échelle logarithmique.
+; Les bémols s'obtiennent en utilisant le dièse de la note précédente.
+; ====================================================================
 
-; Octave 5 (Aiguës pour la pédale)
-N_RE_5   equ $23 
-N_DO_D_5 equ $26 
-N_DO_5   equ $28 
+; --- OCTAVE 2 (Extrêmes graves - Limite du registre 8-bits) ---
+; Les notes sous le Mi 2 dépassent la valeur $FF (255) et sont impossibles.
+N_MI_2      equ $FC ; 252
+N_FA_2      equ $F0 ; 240
+N_FA_D_2    equ $E4 ; 228 (Fa dièse / Sol bémol)
+N_SOL_2     equ $D4 ; 212
+N_SOL_D_2   equ $C8 ; 200 (Sol dièse / La bémol)
+N_LA_2      equ $C0 ; 192
+N_LA_D_2    equ $B4 ; 180 (La dièse / Si bémol)
+N_SI_2      equ $A8 ; 168
 
-; Octave 4 (Mélodie principale)
-N_SI_B_4 equ $2D 
-N_LA_4   equ $30 
-N_SOL_4  equ $35 
-N_FA_4   equ $3C 
-N_MI_4   equ $3F 
-N_RE_4   equ $47 
-N_DO_D_4 equ $4C 
+; --- OCTAVE 3 (Basse standard) ---
+N_DO_3      equ $A0 ; 160
+N_DO_D_3    equ $98 ; 152 (Do dièse / Ré bémol)
+N_RE_3      equ $8E ; 142
+N_RE_D_3    equ $86 ; 134 (Ré dièse / Mi bémol)
+N_MI_3      equ $7E ; 126
+N_FA_3      equ $78 ; 120
+N_FA_D_3    equ $72 ; 114 (Fa dièse / Sol bémol)
+N_SOL_3     equ $6A ; 106
+N_SOL_D_3   equ $64 ; 100 (Sol dièse / La bémol)
+N_LA_3      equ $60 ; 96
+N_LA_D_3    equ $5A ; 90  (La dièse / Si bémol)
+N_SI_3      equ $54 ; 84
 
-; Octave 3 (Graves / Basse continue - Valeurs x 2)
-N_SI_B_3 equ $5A 
-N_LA_3   equ $60 
-N_SOL_3  equ $6A 
-N_FA_3   equ $78 
-N_MI_3   equ $7E 
-N_RE_3   equ $8E 
-N_DO_D_3 equ $98 
+; --- OCTAVE 4 (Mélodie centrale - Octave de référence) ---
+N_DO_4      equ $50 ; 80
+N_DO_D_4    equ $4C ; 76  (Do dièse / Ré bémol)
+N_RE_4      equ $47 ; 71
+N_RE_D_4    equ $43 ; 67  (Ré dièse / Mi bémol)
+N_MI_4      equ $3F ; 63
+N_FA_4      equ $3C ; 60
+N_FA_D_4    equ $39 ; 57  (Fa dièse / Sol bémol)
+N_SOL_4     equ $35 ; 53
+N_SOL_D_4   equ $32 ; 50  (Sol dièse / La bémol)
+N_LA_4      equ $30 ; 48
+N_LA_D_4    equ $2D ; 45  (La dièse / Si bémol)
+N_SI_4      equ $2A ; 42
 
-SILENCE  equ $FFFF
-FIN      equ $0000
+; --- OCTAVE 5 (Aiguës) ---
+N_DO_5      equ $28 ; 40
+N_DO_D_5    equ $26 ; 38  (Do dièse / Ré bémol)
+N_RE_5      equ $24 ; 36
+N_RE_D_5    equ $22 ; 34  (Ré dièse / Mi bémol)
+N_MI_5      equ $20 ; 32
+N_FA_5      equ $1E ; 30
+N_FA_D_5    equ $1D ; 29  (Fa dièse / Sol bémol)
+N_SOL_5     equ $1B ; 27
+N_SOL_D_5   equ $19 ; 25  (Sol dièse / La bémol)
+N_LA_5      equ $18 ; 24
+N_LA_D_5    equ $17 ; 23  (La dièse / Si bémol)
+N_SI_5      equ $15 ; 21
 
-; =======================================================
-; TEMPOS EN FRAMES (Lent et Majestueux - 50 Hz)
-; =======================================================
-; Rappel : 50 frames = 1 seconde complète.
+; --- OCTAVE 6 (Très aiguës - Attention à la justesse matérielle) ---
+; Les valeurs deviennent si petites que l'arrondi crée des fausses notes.
+N_DO_6      equ $14 ; 20
+N_DO_D_6    equ $13 ; 19
+N_RE_6      equ $12 ; 18
+N_RE_D_6    equ $11 ; 17
+N_MI_6      equ $10 ; 16
+N_FA_6      equ $0F ; 15
+N_FA_D_6    equ $0E ; 14
+N_SOL_6     equ $0D ; 13
+N_SOL_D_6   equ $0C ; 12 (Identique au La !)
+N_LA_6      equ $0C ; 12 (Identique au Sol# !)
+N_LA_D_6    equ $0B ; 11 (Identique au Si !)
+N_SI_6      equ $0B ; 11 (Identique au La# !)
 
-F_ARPEG  equ 4   ; (80 ms) Légèrement ralenti pour mieux entendre les notes de l'accord
-F_TICK   equ 6   ; (120 ms) Ornements plus marqués, moins précipités
-F_COURT  equ 10  ; (200 ms) Descentes de gammes bien articulées (5 notes = 1 seconde)
-F_PEDAL  equ 8   ; (160 ms) L'alternance de la pédale devient plus lourde et menaçante
-F_ARRET  equ 50  ; (1 seconde) Véritable point d'orgue dramatique et grand silence
-F_LOURD  equ 100 ; (2 secondes) La note finale résonne très longuement
+; Constantes de contrôle de lecture
+SILENCE     equ $FFFF
+FIN         equ $0000
 
 	even
+Music_GameStart:
+    ; --- Arpège rapide (Do Majeur) ---
+    dc.w N_SOL_3, 6, SILENCE, 2
+    dc.w N_DO_4, 6, SILENCE, 2
+    dc.w N_MI_4, 6, SILENCE, 2
+    dc.w N_SOL_4, 6, SILENCE, 2
+    
+    ; --- Relance courte ---
+    dc.w N_MI_4, 6, SILENCE, 2
+    dc.w N_SOL_4, 6, SILENCE, 2
+    
+    ; --- Point d'orgue aigu (Résolution) ---
+    dc.w N_DO_5, 25, SILENCE, 2
+    
+    ; --- Marqueur de fin ---
+    dc.w FIN, 0
 
-TuneData:
-        ; --- Motif 1 : Le mordant aigu ---
-        dc.w    N_LA_4, F_TICK
-        dc.w    N_SOL_4, F_TICK
-        dc.w    N_LA_4, F_ARRET      
-        dc.w    SILENCE, F_ARRET     
-        
-        ; --- Motif 2 : La descente dramatique ---
-        dc.w    N_SOL_4, F_COURT
-        dc.w    N_FA_4, F_COURT
-        dc.w    N_MI_4, F_COURT
-        dc.w    N_RE_4, F_COURT
-        dc.w    N_DO_D_4, F_COURT
-        dc.w    N_RE_4, F_ARRET      
-        dc.w    SILENCE, F_ARRET     
-        
-        ; --- Motif 3 : L'écho à l'octave inférieure ---
-        dc.w    N_LA_3, F_TICK
-        dc.w    N_SOL_3, F_TICK
-        dc.w    N_LA_3, F_ARRET      
-        dc.w    SILENCE, F_ARRET
-        
-        ; --- Motif 4 : L'accord diminué (arpégé) ---
-        dc.w    N_MI_3, F_COURT
-        dc.w    N_FA_3, F_COURT
-        dc.w    N_DO_D_3, F_COURT
-        dc.w    N_RE_3, F_LOURD     ; Le grand Ré grave  
-        dc.w    SILENCE, F_ARRET
+Music_LifeLost:
+    ; --- Descente chromatique ralentissante ---
+    dc.w N_SOL_3, 6, SILENCE, 2    ; 8 unités
+    dc.w N_FA_D_3, 8, SILENCE, 2   ; 10 unités
+    dc.w N_FA_3, 10, SILENCE, 2    ; 12 unités
+    
+    ; --- Suspension ---
+    dc.w N_MI_3, 15, SILENCE, 10   ; 25 unités
+    
+    ; --- Chute finale extrême grave ---
+    dc.w N_MI_2, 35                ; 35 unités
+    
+    ; --- Marqueur de fin ---
+    dc.w FIN, 0
 
-        ; ==========================================
-        ; SUITE : LES ARPÈGES FULGURANTS
-        ; ==========================================
+Music_GameOver:
+    ; --- Première descente chromatique (Durée : 2,9s / 145 unités) ---
+    dc.w N_SOL_4, 20, SILENCE, 5   ; 0.5s
+    dc.w N_FA_D_4, 20, SILENCE, 5  ; 0.5s
+    dc.w N_FA_4, 20, SILENCE, 5    ; 0.5s
+    dc.w N_MI_4, 45, SILENCE, 5    ; 1.0s
+    dc.w SILENCE, 15               ; Pause dramatique (0.3s)
 
-        ; --- Motif 5 : L'accord de 7ème diminuée (Balayage) ---
-        ; Montée
-        dc.w    N_DO_D_3, F_ARPEG
-        dc.w    N_MI_3, F_ARPEG
-        dc.w    N_SOL_3, F_ARPEG
-        dc.w    N_SI_B_3, F_ARPEG
-        dc.w    N_DO_D_4, F_ARPEG
-        dc.w    N_MI_4, F_ARPEG
-        dc.w    N_SOL_4, F_ARPEG
-        dc.w    N_SI_B_4, F_ARPEG
-        
-        ; Descente
-        dc.w    N_SOL_4, F_ARPEG
-        dc.w    N_MI_4, F_ARPEG
-        dc.w    N_DO_D_4, F_ARPEG
-        dc.w    N_SI_B_3, F_ARPEG
-        dc.w    N_SOL_3, F_ARPEG
-        dc.w    N_MI_3, F_ARPEG
-        dc.w    N_DO_D_3, F_ARPEG
-        
-        dc.w    SILENCE, F_COURT
-        
-        ; --- Motif 6 : L'accord de Ré mineur simulé ---
-        dc.w    N_RE_3, F_ARPEG
-        dc.w    N_FA_3, F_ARPEG
-        dc.w    N_LA_3, F_ARPEG
-        dc.w    N_RE_4, F_ARPEG
-        dc.w    N_FA_4, F_ARPEG
-        
-        dc.w    SILENCE, F_COURT
+    ; --- Deuxième descente chromatique, plus grave (Durée : 3,3s / 165 unités) ---
+    dc.w N_RE_4, 20, SILENCE, 5    ; 0.5s
+    dc.w N_DO_D_4, 20, SILENCE, 5  ; 0.5s
+    dc.w N_DO_4, 45, SILENCE, 5    ; 1.0s
+    dc.w N_SI_3, 45, SILENCE, 5    ; 1.0s
+    dc.w SILENCE, 15               ; Pause dramatique (0.3s)
 
-        ; --- Motif 7 : La pédale de Ré (Descente alternée) ---
-        dc.w    N_RE_5, F_PEDAL      
-        dc.w    N_RE_4, F_PEDAL      ; (Basse Pédale)
-        dc.w    N_DO_5, F_PEDAL
-        dc.w    N_RE_4, F_PEDAL
-        
-        dc.w    N_SI_B_4, F_PEDAL
-        dc.w    N_RE_4, F_PEDAL
-        dc.w    N_LA_4, F_PEDAL
-        dc.w    N_RE_4, F_PEDAL
-        
-        dc.w    N_SOL_4, F_PEDAL
-        dc.w    N_RE_4, F_PEDAL
-        dc.w    N_FA_4, F_PEDAL
-        dc.w    N_RE_4, F_PEDAL
-        
-        dc.w    N_MI_4, F_PEDAL
-        dc.w    N_RE_4, F_PEDAL
-        dc.w    N_FA_4, F_PEDAL
-        dc.w    N_RE_4, F_PEDAL
-        
-        ; --- Résolution finale ---
-        dc.w    N_MI_4, F_ARPEG
-        dc.w    N_RE_4, F_ARPEG
-        dc.w    N_DO_D_4, F_ARPEG
-        dc.w    N_RE_4, F_LOURD      ; Résolution dramatique finale
-        
-        dc.w    SILENCE, F_ARRET
-        
-        ; Marqueur de fin de séquence
-        dc.w    FIN, FIN
-    even
+    ; --- Note finale fatale et coupure nette (Durée : 1,5s / 75 unités) ---
+    dc.w N_LA_3, 75                ; 1.5s soutenu, sans silence de détachement final
+    
+    ; --- Marqueur de fin ---
+    dc.w FIN, 0
+	
+Music_OdeALaJoie:
+Music_OdeALaJoie_Fast:
+    ; =========================================================
+    ; THEME A (Mesures 1 à 4)
+    ; =========================================================
+    ; Mesure 1 : Mi, Mi, Fa, Sol
+    dc.w N_MI_4,16, SILENCE,4, N_MI_4,16, SILENCE,4, N_FA_4,16, SILENCE,4, N_SOL_4,16, SILENCE,4
+    ; Mesure 2 : Sol, Fa, Mi, Ré
+    dc.w N_SOL_4,16, SILENCE,4, N_FA_4,16, SILENCE,4, N_MI_4,16, SILENCE,4, N_RE_4,16, SILENCE,4
+    ; Mesure 3 : Do, Do, Ré, Mi
+    dc.w N_DO_4,16, SILENCE,4, N_DO_4,16, SILENCE,4, N_RE_4,16, SILENCE,4, N_MI_4,16, SILENCE,4
+    ; Mesure 4 : Mi (noire pointée), Ré (croche), Ré (blanche)
+    dc.w N_MI_4,25, SILENCE,5, N_RE_4,7, SILENCE,3, N_RE_4,35, SILENCE,5
 
+    ; =========================================================
+    ; THEME A' (Mesures 5 à 8)
+    ; =========================================================
+    ; Mesure 5 : Mi, Mi, Fa, Sol
+    dc.w N_MI_4,16, SILENCE,4, N_MI_4,16, SILENCE,4, N_FA_4,16, SILENCE,4, N_SOL_4,16, SILENCE,4
+    ; Mesure 6 : Sol, Fa, Mi, Ré
+    dc.w N_SOL_4,16, SILENCE,4, N_FA_4,16, SILENCE,4, N_MI_4,16, SILENCE,4, N_RE_4,16, SILENCE,4
+    ; Mesure 7 : Do, Do, Ré, Mi
+    dc.w N_DO_4,16, SILENCE,4, N_DO_4,16, SILENCE,4, N_RE_4,16, SILENCE,4, N_MI_4,16, SILENCE,4
+    ; Mesure 8 : Ré (noire pointée), Do (croche), Do (blanche)
+    dc.w N_RE_4,25, SILENCE,5, N_DO_4,7, SILENCE,3, N_DO_4,35, SILENCE,5
+
+    ; =========================================================
+    ; THEME B - Le Pont (Mesures 9 à 12)
+    ; =========================================================
+    ; Mesure 9 : Ré, Ré, Mi, Do
+    dc.w N_RE_4,16, SILENCE,4, N_RE_4,16, SILENCE,4, N_MI_4,16, SILENCE,4, N_DO_4,16, SILENCE,4
+    ; Mesure 10 : Ré, Mi/Fa (croches), Mi, Do
+    dc.w N_RE_4,16, SILENCE,4, N_MI_4,7, SILENCE,3, N_FA_4,7, SILENCE,3, N_MI_4,16, SILENCE,4, N_DO_4,16, SILENCE,4
+    ; Mesure 11 : Ré, Mi/Fa (croches), Mi, Ré
+    dc.w N_RE_4,16, SILENCE,4, N_MI_4,7, SILENCE,3, N_FA_4,7, SILENCE,3, N_MI_4,16, SILENCE,4, N_RE_4,16, SILENCE,4
+    ; Mesure 12 : Do, Ré, Sol (octave inférieure)
+    dc.w N_DO_4,16, SILENCE,4, N_RE_4,16, SILENCE,4, N_SOL_3,35, SILENCE,5
+
+    ; =========================================================
+    ; THEME A' (Mesures 13 à 16) - Conclusion
+    ; =========================================================
+    ; Mesure 13 : Mi, Mi, Fa, Sol
+    dc.w N_MI_4,16, SILENCE,4, N_MI_4,16, SILENCE,4, N_FA_4,16, SILENCE,4, N_SOL_4,16, SILENCE,4
+    ; Mesure 14 : Sol, Fa, Mi, Ré
+    dc.w N_SOL_4,16, SILENCE,4, N_FA_4,16, SILENCE,4, N_MI_4,16, SILENCE,4, N_RE_4,16, SILENCE,4
+    ; Mesure 15 : Do, Do, Ré, Mi
+    dc.w N_DO_4,16, SILENCE,4, N_DO_4,16, SILENCE,4, N_RE_4,16, SILENCE,4, N_MI_4,16, SILENCE,4
+    ; Mesure 16 : Ré (noire pointée), Do (croche), Do (blanche)
+    dc.w N_RE_4,25, SILENCE,5, N_DO_4,7, SILENCE,3, N_DO_4,35, SILENCE,5
+
+    ; --- Marqueur de fin ---
+    dc.w FIN, 0
+
+	even
+	
+	
+	
+	

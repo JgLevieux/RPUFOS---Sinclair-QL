@@ -21,6 +21,7 @@
 		clr.l	(\2)
 	endm
 
+	if 0
 	macro DBGENABLE
 		moveq #5,d1
 		moveq #-26,d0
@@ -48,3 +49,21 @@
 		dc.b 0
 		CNOP 0,2
 	endm
+	else
+	macro DBGENABLE
+		nop
+	endm
+
+	macro DBGBREAK
+		nop
+	endm
+
+	macro DBGLOG
+		nop
+	endm
+
+	macro DBGLOGBREAK
+		nop
+	endm
+	
+	endif
