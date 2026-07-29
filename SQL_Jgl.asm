@@ -37,9 +37,11 @@ ScreenMode01	equ		%00001000
 ScreenMode02	equ		%10001000
 
 
-GAME_STATUS_MENU		equ		0
-GAME_STATUS_GAME		equ		1
-GAME_STATUS_GAMEOVER	equ		2
+GAME_STATUS_MENU				equ		0
+GAME_STATUS_GAME				equ		1
+GAME_STATUS_GAMESTART			equ		2
+GAME_STATUS_GAMELOOSELIFE		equ		3
+GAME_STATUS_GAMEOVER			equ		10
 
 
 ; TODO :
@@ -146,8 +148,14 @@ MainLoop:
 				cmp.l	#GAME_STATUS_MENU,d0
 				beq.s   .CaseMenu
 
+				cmp.l	#GAME_STATUS_GAMESTART,d0
+				beq.s   .CaseGameStart
+				
 				cmp.l	#GAME_STATUS_GAME,d0
 				beq.s   .CaseGame
+
+				cmp.l	#GAME_STATUS_GAMELOOSELIFE,d0
+				beq.s   .CaseGameLooseLife
 
 				cmp.l	#GAME_STATUS_GAMEOVER,d0
 				beq.s   .CaseGameOver
@@ -157,8 +165,14 @@ MainLoop:
 .CaseMenu:
 				bsr		ProcessMenu
 				bra.s   .EndSwitch
+.CaseGameStart:
+				bsr		ProcessGameStart
+				bra.s   .EndSwitch
 .CaseGame:
 				bsr		ProcessGame
+				bra.s   .EndSwitch
+.CaseGameLooseLife:
+				bsr		ProcessGameLooseLife
 				bra.s   .EndSwitch
 .CaseGameOver:
 				bsr		ProcessGameOver
@@ -176,6 +190,22 @@ MainLoop:
                 rts
 
 ;=============================================================================
+; Set Game Status
+; d0 = GAME_STATUS_???
+; Destroy a0
+;=============================================================================
+SetGameStatus:
+				lea		GameMode(pc),a0
+				move.l	d0,(a0)
+
+				lea     NbLoop(pc),a0
+                move.l  #0,(a0)
+				
+				lea		SpiraleBackBuffer(pc),a0
+				move.l	#0,(a0)+
+				rts
+				
+;=============================================================================
 ; Start Menu
 ;=============================================================================
 StartMenu:
@@ -187,12 +217,8 @@ StartMenu:
 				move.l	#$28000,a1
 				bsr		zx0_decompress
 				
-				lea		GameMode(pc),a0
-				move.l	#GAME_STATUS_MENU,(a0)
-
-				lea     NbLoop(pc),a0
-                move.l  #0,(a0)
-				
+				move.l	#GAME_STATUS_MENU,d0
+				bsr		SetGameStatus
 				rts
 				
 ;=============================================================================
@@ -210,56 +236,76 @@ ProcessMenu:
 ; Process game
 ;=============================================================================
 StartGame:
-				lea		GameMode(pc),a0
-				move.l	#GAME_STATUS_GAME,(a0)
-
-				lea     NbLoop(pc),a0
-                move.l  #0,(a0)
+				move.l	#GAME_STATUS_GAMESTART,d0
+				bsr		SetGameStatus
 
 				bsr		ResetQLix
 				rts
 
 ;=============================================================================
-; Process game
+; Process game loose life
 ;=============================================================================
-ProcessGame:
+ProcessGameLooseLife:
 				bsr		CleanPreviousDisplay
 
-				lea		PlayerMustDie(pc),a0
-				tst.l	(a0)
-				beq.s	.PlayerMustNotDie
-				move.l	#0,(a0)
+				lea     NbLoop(pc),a0
+				move.l	(a0),d0
+				cmp.l	#50,d0
+				bne.s	.NotEndingGameLooseLife
+
 				bsr		BigClean
-				bsr		TouchPlayerTracing
-				
-				bra		.EndProcessGame
-.PlayerMustNotDie:
 
-				lea		Ennemy01MoveInfo(pc),a3
-				;bsr		MoveEnnemy
-				
-				lea		Ennemy02MoveInfo(pc),a3
-				;bsr		MoveEnnemy
-				
-				bsr		MovePlayer
-				
-				;bsr		MoveQLix
+				bsr		BackSpiraleSaveBuffer
+				bsr		SwapBuffer
+				bsr		BackSpiraleSaveBuffer
+
+				move.l	#GAME_STATUS_GAMESTART,d0
+				bsr		SetGameStatus
+
+				bsr		TouchPlayerTracing			; Can set GAME_SATUS at Gameover
+				rts
+.NotEndingGameLooseLife:
+
 				bsr		DrawSpiraleAround
-
-				;bsr		UpdateTimer
-				
 				bsr		DrawAll
-.EndProcessGame:
+				rts
+
+
+;=============================================================================
+; Process game start
+;=============================================================================
+ProcessGameStart:
+				lea     NbLoop(pc),a0
+				move.l	(a0),d0
+				cmp.l	#50,d0
+				bne.s	.NotEndingGameStart
+
+				bsr		BigClean
+
+				bsr		BackSpiraleSaveBuffer
+				bsr		SwapBuffer
+				bsr		BackSpiraleSaveBuffer
+
+				move.l	#GAME_STATUS_GAME,d0
+				bsr		SetGameStatus
+				rts
+.NotEndingGameStart:
+
+				bsr		CleanPreviousDisplay
+				bsr		DrawSpiraleAround
+				bsr		DrawAll
 				rts
 
 				
+;=============================================================================
+; Spirale around player at start & loose
+;=============================================================================
 SpiraleBackBuffer: dcb.l (32/2/4)*32+1,0
 
-DrawSpiraleAround:
+BackSpiraleSaveBuffer:
 				lea		PlayerMoveInfo(pc),a3		; a3 = Player coord adr
 				lea		ScreenBase(pc),a4
 				move.l	(a4),a4
-
 				lea		SpiraleBackBuffer(pc),a1
 				tst.l	(a1)+
 				beq.s	.NoBackSpirale
@@ -270,6 +316,12 @@ DrawSpiraleAround:
 				move.l	a4,a0
 				bsr		Back32x32
 .NoBackSpirale:
+				rts
+
+SaveSpiraleSaveBuffer:
+				lea		PlayerMoveInfo(pc),a3		; a3 = Player coord adr
+				lea		ScreenBase(pc),a4
+				move.l	(a4),a4
 				move.l	SEntityMoveInfo_X(a3),d0		; X
 				move.l	SEntityMoveInfo_Y(a3),d1		; Y
 				sub.l	#16-3,d0
@@ -278,13 +330,23 @@ DrawSpiraleAround:
 				lea		SpiraleBackBuffer(pc),a1
 				move.l	#1,(a1)+
 				bsr		Save32x32
+				rts
+
+DrawSpiraleAround:
+				lea		PlayerMoveInfo(pc),a3		; a3 = Player coord adr
+				lea		ScreenBase(pc),a4
+				move.l	(a4),a4
+				
+				bsr		BackSpiraleSaveBuffer
+				bsr		SaveSpiraleSaveBuffer
 				
 				lea     NbLoop(pc),a0
 				move.l	(a0),d7								; Num frame
 				;moveq	#64,d7
 
                 move.w  d7,d6
-				add		d6,d6
+				add.w	#32,d6
+				add.w	d6,d6
                 lea     SinTable6(pc),a6
 				moveq	#0,d5
                 andi.w  #127,d6
@@ -322,16 +384,43 @@ DrawSpiraleAround:
 				
 				rts
 				
+;=============================================================================
+; Process game
+;=============================================================================
+ProcessGame:
+				bsr		CleanPreviousDisplay
+
+				lea		PlayerMustDie(pc),a0
+				tst.l	(a0)
+				beq.s	.PlayerMustNotDie
+				move.l	#0,(a0)
+
+				move.l	#GAME_STATUS_GAMELOOSELIFE,d0
+				bsr		SetGameStatus
+				rts
+.PlayerMustNotDie:
+
+				lea		Ennemy01MoveInfo(pc),a3
+				bsr		MoveEnnemy
 				
+				lea		Ennemy02MoveInfo(pc),a3
+				bsr		MoveEnnemy
+				
+				bsr		MovePlayer
+				
+				bsr		MoveQLix
+				
+				bsr		UpdateTimer
+				
+				bsr		DrawAll
+				rts
+
 ;=============================================================================
 ; Start Game Over
 ;=============================================================================
 StartGameOver:
-				lea		GameMode(pc),a0
-				move.l	#GAME_STATUS_GAMEOVER,(a0)
-
-				lea     NbLoop(pc),a0
-                move.l  #0,(a0)
+				move.l	#GAME_STATUS_GAMEOVER,d0
+				bsr		SetGameStatus
 				rts
 
 ;=============================================================================
@@ -488,7 +577,7 @@ SwapBuffer:
 			endif
 				rts
 
-				
+
 ;=============================================================================
 ; Clean one sprite
 ; a1 = Save struct adr
@@ -680,7 +769,6 @@ DrawAll:
 				lea		PlayerMustDie(pc),a0
 				move.l	#1,(a0)
 				bra		.ContinueDraw
-				;DBGBREAK
 .noplayercollide:
 				cmp.l	#0,a6		; Any pixel of the drawline touch player line?
 				beq.s	.ContinueDraw
@@ -1506,11 +1594,12 @@ TouchPlayerTracing:
 
 				bsr		ResetEnnemiesPosition
 				
+				CleanVarL PlayerMustDie,a0
 				lea		PlayerLife(pc),a0
 				sub.b	#1,(a0)
 				bne.s	.NotGameOver
 				bsr		StartGameOver
-.NotGameOver:				
+.NotGameOver:
 				bsr		DisplayLife
 				
                 movem.l (sp)+,d0-d7/a0-a6
