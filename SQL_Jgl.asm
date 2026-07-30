@@ -184,7 +184,7 @@ MainLoop:
 				nop
 .EndSwitch:				
 
-				;bsr		DrawVblTimer
+				bsr		DrawVblTimer
 
 			ifd TIMER_MODE
 				DisplayOffForProfiling
@@ -2947,7 +2947,20 @@ ClearSprite16x16:
 ; =============================================================================
 WaitVBlank:
 ; from https://www.chibiakumas.com/68000/sinclairql.php
-			   move.b	#%11111111,$18021    ;Clear interrupt bits
+
+				moveq	#0,d1
+				moveq	#1,d2
+				move.b	#1<<3,$18021   ; ack frame interrupt
+.wait:
+				add.l	d2,d1
+				btst    #3,$18021		; ...and wait for the next VBL
+				beq.s   .wait                   ; (bit 3 only: bits 7..5 always move)
+
+				lea		VBlankTimer(pc),a0
+				move.l	d1,(a0)
+
+	if 0
+	move.b	#%11111111,$18021    ;Clear interrupt bits
 			   moveq	#0,d1
 			   moveq	#1,d2
 waitVBlankAgain:
@@ -2958,7 +2971,7 @@ waitVBlankAgain:
 				
 				lea		VBlankTimer(pc),a0
 				move.l	d1,(a0)
-				
+	endif
 				rts
 
 DrawVblTimer:
@@ -2993,6 +3006,9 @@ DrawVblTimer:
 				clr.w	(a0)+
 				dbra	d0,.CleanLoop
 
+				move.w	#$0055,(a0)+ ; Last pixel to see the end
+				move.w	#$0055,(a0)+ ; Last pixel to see the end
+				move.w	#$0055,(a0)+ ; Last pixel to see the end
 				move.w	#$0055,(a0)+ ; Last pixel to see the end
 				rts
 
