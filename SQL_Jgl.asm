@@ -70,6 +70,7 @@ MainLoop:
 
 				btst	#Keyboard01_ESC,1(a1)
 				beq.s	.NoESC
+				DBGBREAK
 .NoESC:
 
 				lea     NbLoop(pc),a0
@@ -99,12 +100,40 @@ MainLoop:
 
 				
 ScrollTest:
+				lea		Demo01(pc),a0
 
+				lea     NbLoop(pc),a1
+				move.l	(a1),d0
+				and.l	#3,d0
+				tst.l	d0
+				beq.s	.EndAdd
+				add.l	#92*(96/2),a0
+				sub.l	#1,d0
+				beq.s	.EndAdd
+				add.l	#92*(96/2),a0
+				sub.l	#1,d0
+				beq.s	.EndAdd
+				add.l	#92*(96/2),a0
+				sub.l	#1,d0
+
+.EndAdd:
+
+				lea		ScreenBase(pc),a1
+				move.l	(a1),a1
+				
+				add.l	#128/2-96/2/2+128*(128-92/2),a1
 ;		1 registre = 4 octets = 8 pixels
 
-				movem.l	(a0)+,d0-d7/a1-a6		; 14 registres = 112 pixels
+			rept 92
+				movem.l	(a0)+,d0-d6
+				movem.l	d0-d6,(a1)
+				
+				movem.l	(a0)+,d0-d4
+				movem.l	d0-d4,28(a1)
+				lea		128(a1),a1
+			endr
     
-    			movem.l d0-d7/a1-a6,-(sp)
+    			;movem.l d0-d7/a1-a6,-(sp)
 
 
 				rts
@@ -805,11 +834,14 @@ BufferNum:					dc.w	0
 	even
 NbLoop:						dc.l	0
 	even
+							dcb.b	2048,0
+TopOfStack:
+	even
 Font:						incbin 		"Data\Font8x8.bin"
 	even
 LogoRetroProg:				incbin 		"Data\logo.bin.zx0"
 	even
-							dcb.b	2048,0
-TopOfStack:
+Demo01:						incbin 		"Data\Demo01.bin"
+	even
 	even
 
