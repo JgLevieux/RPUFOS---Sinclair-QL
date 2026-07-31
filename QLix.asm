@@ -706,7 +706,7 @@ MoveEntity:
 				rts
 
 ;=============================================================================
-; Clean all previous things displayed at the same time at the start of the frame
+; Swap buffer for double buffering
 ;=============================================================================
 SwapBuffer:
 			; Double buffering

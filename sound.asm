@@ -11,15 +11,21 @@ SoundTest:
         dc.b	$A			; Sound Command
         dc.b	8			; Bytes to follow
         dc.l	$0000aaaa	; Byte Parameters
-        dc.b	$20			; Pitch 1
-        dc.b	$F0			; Pitch 2
-        dc.w	0			; interval between steps (0,0),
-        dc.b	0,100		; Duration (65535)
-        dc.b	$1			; step in pitch (4bit) / wrap (4bit)
-        dc.b	$0			; randomness of step (4bit) / fuzziness (4bit)
+        dc.b	40			; Pitch 1
+        dc.b	80			; Pitch 2
+        dc.b	8,2			; interval between steps (0,0),
+        dc.b	$88,$43     ; duration $1388 = 5000 units
+        dc.b	$10			; step in pitch (4bit) / wrap (4bit)
+        dc.b	$44			; randomness of step (4bit) / fuzziness (4bit)
         dc.b	1			; No return parameters       
 	even
 
+sfx_laser
+        dc.b    5,80            ; pitch1+1, pitch2+1 (fast sweep pair)
+        dc.b    2,0             ; interval = 2 (lo,hi)
+        dc.b    $00,$04         ; duration = $0400 (lo,hi)
+        dc.b    $10             ; gradient=1, wrap=0
+        dc.b    $00             ; random=0, fuzz=0
 
 FrameBeforeNextSound:	dc.l	0
 CurrentNote:			dc.l	0
