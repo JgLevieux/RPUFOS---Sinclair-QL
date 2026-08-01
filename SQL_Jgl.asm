@@ -86,6 +86,9 @@ MainLoop:
 				bsr			SoundTest
 				
 .nobreakpoint:
+				lea		ScreenBase(pc),a0
+				move.l	(a0),a0
+				bsr     ClearScreen
 
 				bsr		ScrollTest
 
@@ -100,37 +103,52 @@ MainLoop:
 
 				
 ScrollTest:
-				lea		Demo01(pc),a0
+				lea		ScreenBase(pc),a6
+				move.l	(a6),a6
+				add.l	#128/2-128/2/2,a6
 
 				lea     NbLoop(pc),a1
 				move.l	(a1),d0
-				and.l	#3,d0
-				tst.l	d0
-				beq.s	.EndAdd
-				add.l	#92*(96/2),a0
-				sub.l	#1,d0
-				beq.s	.EndAdd
-				add.l	#92*(96/2),a0
-				sub.l	#1,d0
-				beq.s	.EndAdd
-				add.l	#92*(96/2),a0
-				sub.l	#1,d0
+				and.l	#255,d0
+				lsl.l	#1,d0
 
-.EndAdd:
+				lea		SinTable256(pc),a5
+				moveq	#0,d7
 
-				lea		ScreenBase(pc),a1
-				move.l	(a1),a1
+				lea		Demo01(pc),a0
+				;DBGBREAK
 				
-				add.l	#128/2-96/2/2+128*(128-92/2),a1
-;		1 registre = 4 octets = 8 pixels
+			rept 128
+				add.w	#2,d0
+				and.w	#255,d0
+				moveq	#0,d7
+				move.w	(a5,d0.w),d7
+				ext.l	d7
+				asr.l	#3,d7			; -32 to 32
+				move.l	d7,d6
+				and.l	#$FFFFFFFE,d7
+				move.l	a6,a4
+				add.l	d7,a6
 
-			rept 92
-				movem.l	(a0)+,d0-d6
-				movem.l	d0-d6,(a1)
+				and.l	#3,d6
+				asl.l	#7,d6
+				asl.l	#6,d6
+				add.l	d6,a0
 				
-				movem.l	(a0)+,d0-d4
-				movem.l	d0-d4,28(a1)
-				lea		128(a1),a1
+			
+				movem.l	(a0),d1-d3/a1-a2
+				movem.l	d1-d3/a1-a2,(a6)
+
+				movem.l	5*4(a0),d1-d3/a1-a2
+				movem.l	d1-d3/a1-a2,5*4(a6)
+
+				movem.l	5*4*2(a0),d1-d3/a1-a3
+				movem.l	d1-d3/a1-a2,5*4*2(a6)
+				
+				sub.l	d6,a0
+				move.l	a4,a6
+				lea		128(a6),a6
+				lea		64(a0),a0
 			endr
     
     			;movem.l d0-d7/a1-a6,-(sp)
@@ -839,7 +857,7 @@ TopOfStack:
 	even
 Font:						incbin 		"Data\Font8x8.bin"
 	even
-LogoRetroProg:				incbin 		"Data\logo.bin.zx0"
+;LogoRetroProg:				incbin 		"Data\logo.bin.zx0"
 	even
 Demo01:						incbin 		"Data\Demo01.bin"
 	even
