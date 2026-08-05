@@ -93,7 +93,10 @@ MainLoop:
 				;bsr     ClearScreen
 
 				;bsr		ImageDeformationTest
-				bsr			OutroAroundEffect
+				;bsr		ReplaceOutroImage
+				;bsr		OutroAroundEffect
+				
+				bsr		CharaFalling
 
 				bsr		DrawVblTimer
 
@@ -110,12 +113,101 @@ MainLoop:
 StartOutro:
 				lea		Outro01(pc),a0
 				lea		$20000,a1
-				bsr		zx0_decompress
+				;bsr		zx0_decompress
 
 				lea		Outro01(pc),a0
 				lea		$28000,a1
+				;bsr		zx0_decompress
+
+				lea		Outro02(pc),a0
+				lea		BufferData(pc),a1
 				bsr		zx0_decompress
 
+				;CleanVarL ReplaceXOffset,a0
+				;CleanVarL ReplaceYOffset,a0
+				
+				rts
+
+				
+;=============================================================================
+; Chara falling phase
+;=============================================================================
+CharaFalling:
+;		d0.l = x
+;		d1.l = y
+;		a0 = screen base
+;		a1 = sprite base
+				DBGBREAK
+
+				lea		ScreenBase(pc),a0
+				move.l	(a0),a0
+				lea		OlipixChara(pc),a1
+				move.l	#112,d0
+				move.l	#80,d1
+				bsr		DisplaySprite32x32Masked
+				rts
+				
+;=============================================================================
+; Replace outro 01 with outro 02 overtime
+;=============================================================================
+ReplaceXOffset:	dc.l	16
+ReplaceYOffset:	dc.l	16
+
+ReplaceOutroImage:
+				lea     NbLoop(pc),a4
+				move.l	(a4),d7
+				
+				cmp.l	#50,d7
+				bmi		.EndReplaceOutroImage
+
+				and.l	#3,d7
+				bne		.EndReplaceOutroImage
+
+				move.l	#$20000,a0
+				move.l	#$28000,a1
+				lea		BufferData(pc),a2
+
+				lea		ReplaceXOffset(pc),a3
+				move.l	(a3),d0
+				lea		ReplaceYOffset(pc),a4
+				move.l	(a4),d1
+
+				lsr.l	#1,d0					; /2 for X offset
+				lsl.l	#7,d1					; * 128 for Y offset
+				add.l	d1,d0
+				add.l	d0,a0
+				add.l	d0,a1
+				add.l	d0,a2
+				
+				moveq	#16-1,d7				; Nb line
+.LoopYReplace:
+				moveq	#32/4/2-1,d6			; Nb Words
+.LoopXReplace:
+				move.l	(a2),(a0)+
+				move.l	(a2)+,(a1)+
+				dbra	d6,.LoopXReplace
+				
+				lea		(128-32/2)(a0),a0
+				lea		(128-32/2)(a1),a1
+				lea		(128-32/2)(a2),a2
+				dbra	d7,.LoopYReplace
+
+				move.l	(a3),d0
+				add.l	#32,d0
+				cmp.l	#224,d0
+				bmi.s	.NotANewLine
+
+				move.l	#16,d0
+				add.l	#16,(a4)
+				cmp.l	#224,(a4)
+				bhi.s	.StopReplaceOutroImage
+.NotANewLine:
+				move.l	d0,(a3)
+.EndReplaceOutroImage:
+				rts
+.StopReplaceOutroImage:
+				move.l	#16,(a3)
+				move.l	#16,(a4)
 				rts
 
 ;=============================================================================
@@ -526,6 +618,46 @@ NumberToAscii_000000:
 
 				add.b	#"0",d0
 				move.b	d0,6(a0)
+				rts
+
+;=============================================================================
+; Display a sprite, 32x32 with mask , !!! no clipping !!!
+; Input : -
+;		d0.l = x
+;		d1.l = y
+;		a0 = screen base
+;		a1 = sprite base
+; Output : -
+; Destroy :
+;		d0, d1, d2, d3
+;		a0, a1, a2
+;
+; TODO : 
+;	- optimiser avec du .b/.w (255 max pour les coord)
+;=============================================================================
+DisplaySprite32x32Masked:
+				;DBGBREAK
+				move.l	d0,d3
+				lsr.l	#2,d0			; /4, 4 pixels per word.
+				add.l	d0,d0			; *2
+				lsl.l	#7,d1			; y*128
+				add.l	d1,a0			; +y screen
+				add.l	d0,a0			; +x screen
+						
+				move.l	a1,a2
+				lea		512(a2),a2		; a2 = mask
+
+				move.w  #128-32/2,d1
+                
+			rept 32  ; lines
+				rept 4
+					move.l  (a0),d0
+					and.l   (a2)+,d0
+					or.l    (a1)+,d0
+					move.l  d0,(a0)+
+				endr
+					adda.w  d1,a0
+			endr
 				rts
 
 ;=============================================================================
@@ -1112,6 +1244,10 @@ Outro01:					incbin 		"Data\Outro_01.bin.zx0"
 	even
 Outro02:					incbin 		"Data\Outro_02.bin.zx0"
 	even
+OlipixChara:				incbin 		"Data\Olipix_Chara.bin"
+	even
 Demo01:						;incbin 		"Data\Demo01.bin"
 	even
+BufferData:
+		dcb.b				32*1024,0
 
