@@ -121,16 +121,34 @@ StartOutro:
 ;=============================================================================
 ; Outro around effect
 ;=============================================================================
+
+TableAroundEffect:
+	dc.w	3,2,4,2,3,4,2,3,2,3,4,3,2,3,4,3
+	dc.w	4,2,3,4,2,3,4,2,3,4,2,3,4,2,3,4
+	dc.w	5,4,2,3,4,5,2,3,5,4,5,2,3,5,4,2
+	dc.w	2,2,4,5,2,3,2,4,2,3,2,4,2,3,4,2
+	dc.w	3,2,3,4,3,2,3,4,3,4,2,3,4,2,3,4
+	dc.w	2,3,4,2,3,4,2,3,4,5,4,2,3,4,5,2
+	dc.w	3,5,4,5,2,3,5,4,2,2,4,2,4,5,2,3
+	dc.w	3,2,3,4,3,2,3,4,3,4,2,3,4,2,3,4
+
+; https://youtu.be/qc4H21jJt6Q?t=1881
+	
 COLOR_BLUE_LONG		equ		$00550055
 COLOR_GREEN_LONG	equ		$AA00AA00
 
 OutroAroundEffect:
 				lea		ScreenBase(pc),a6
 				move.l	(a6),a6
-				add.l	#128*256,a6
+				add.l	#128*(256-8),a6
 
-				lea		TableSpeSin(pc),a5
-				move.l	(a5),a5
+				lea     NbLoop(pc),a4
+				move.l	(a4),d7
+				and.l	#7,d7
+				lsl.l	#7,d7
+				add.l	d7,a6
+
+				lea		TableAroundEffect(pc),a5
 
 				move.l	#COLOR_BLUE_LONG,d0
 				move.l	#COLOR_BLUE_LONG,d1
@@ -141,51 +159,122 @@ OutroAroundEffect:
 				move.l	#COLOR_GREEN_LONG,d6
 				move.l	#COLOR_GREEN_LONG,a0
 
-		rept 2
-			rept 8
+; Bottom full lines
+				moveq	#0,d7
+				move.w	(a5)+,d7
+				sub.w	#1,d7
+.L1:
+			rept 2
 				movem.l	d0-d3,-(a6)
 				movem.l	d0-d3,-(a6)
 				movem.l	d0-d3,-(a6)
 				movem.l	d0-d3,-(a6)
 			endr
+				dbra	d7,.L1
 
-			rept 8
+				move.w	(a5)+,d7
+				sub.w	#1,d7
+.L2:
+			rept 2
 				movem.l	d4-d6/a0,-(a6)
 				movem.l	d4-d6/a0,-(a6)
 				movem.l	d4-d6/a0,-(a6)
 				movem.l	d4-d6/a0,-(a6)
 			endr
-		endr
+				dbra	d7,.L2
 
-		rept 28
-			rept 4
+				move.w	(a5)+,d7
+				sub.w	#1,d7
+.L3:
+			rept 2
+				movem.l	d0-d3,-(a6)
+				movem.l	d0-d3,-(a6)
+				movem.l	d0-d3,-(a6)
+				movem.l	d0-d3,-(a6)
+			endr
+				dbra	d7,.L3
+
+				move.w	(a5)+,d7
+				sub.w	#1,d7
+.L4:
+			rept 2
+				movem.l	d4-d6/a0,-(a6)
+				movem.l	d4-d6/a0,-(a6)
+				movem.l	d4-d6/a0,-(a6)
+				movem.l	d4-d6/a0,-(a6)
+			endr
+				dbra	d7,.L4
+
+	macro	BlueBorderLine
+				move.w	(a5)+,d7
+				sub.w	#1,d7
+	.loop\@:
 				movem.l	d0-d1,-(a6)
 				lea		-(128-16)(a6),a6
 				movem.l	d0-d1,-(a6)
-			endr
+				dbra	d7,.loop\@
+	endm
 
-			rept 4
+	macro	GreenBorderLine
+				move.w	(a5)+,d7
+				sub.w	#1,d7
+	.loop\@:
 				movem.l	d4-d5,-(a6)
 				lea		-(128-16)(a6),a6
 				movem.l	d4-d5,-(a6)
-			endr
+				dbra	d7,.loop\@
+	endm
+
+; Border lines
+		rept 36
+			BlueBorderLine
+			GreenBorderLine
 		endr
 		
-		rept 2
-			rept 8
+; Up lines
+				move.w	(a5)+,d7
+				sub.w	#1,d7
+.L1u:
+			rept 2
 				movem.l	d0-d3,-(a6)
 				movem.l	d0-d3,-(a6)
 				movem.l	d0-d3,-(a6)
 				movem.l	d0-d3,-(a6)
 			endr
+				dbra	d7,.L1u
 
-			rept 8
+				move.w	(a5)+,d7
+				sub.w	#1,d7
+.L2u:
+			rept 2
 				movem.l	d4-d6/a0,-(a6)
 				movem.l	d4-d6/a0,-(a6)
 				movem.l	d4-d6/a0,-(a6)
 				movem.l	d4-d6/a0,-(a6)
 			endr
-		endr
+				dbra	d7,.L2u
+
+				move.w	(a5)+,d7
+				sub.w	#1,d7
+.L3u:
+			rept 2
+				movem.l	d0-d3,-(a6)
+				movem.l	d0-d3,-(a6)
+				movem.l	d0-d3,-(a6)
+				movem.l	d0-d3,-(a6)
+			endr
+				dbra	d7,.L3u
+
+				move.w	(a5)+,d7
+				sub.w	#1,d7
+.L4u:
+			rept 2
+				movem.l	d4-d6/a0,-(a6)
+				movem.l	d4-d6/a0,-(a6)
+				movem.l	d4-d6/a0,-(a6)
+				movem.l	d4-d6/a0,-(a6)
+			endr
+				dbra	d7,.L4u
 				rts
 				
 				
@@ -1023,6 +1112,6 @@ Outro01:					incbin 		"Data\Outro_01.bin.zx0"
 	even
 Outro02:					incbin 		"Data\Outro_02.bin.zx0"
 	even
-Demo01:						incbin 		"Data\Demo01.bin"
+Demo01:						;incbin 		"Data\Demo01.bin"
 	even
 
