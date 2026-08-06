@@ -65,3 +65,11 @@
 1240 CALL clearsreenadr, HEX("00000000")
 1245 PRINT "BLACK"
 
+2300 sprite=RESPR(1280)
+2310 LBYTES mdv1_ghostred_bin,sprite
+2350 displaysprite16x16=RESPR(512)
+2370 LBYTES win1_displaysprite16x16_bin,displaysprite16x16
+2380 CALL displaysprite16x16, 60, 64, sprite
+2381 CALL displaysprite16x16, 61, 64+16*1, sprite
+2382 CALL displaysprite16x16, 62, 64+16*2, sprite
+2383 CALL displaysprite16x16, 63, 64+16*3, sprite

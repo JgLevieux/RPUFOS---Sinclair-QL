@@ -102,6 +102,9 @@ MainLoop:
 				
 				cmp.l	#STATUS_DEMO_OUTRO_FALLING,d0
 				beq.s   .CaseOutroFalling
+
+				cmp.l	#STATUS_DEMO_PLASMA_EFFECT,d0
+				beq.s   .CasePlasma
 				
 				bra.s   .EndSwitch
 
@@ -112,17 +115,23 @@ MainLoop:
 
 .NotEndCaseOutro01:
 				bsr		OutroAroundEffect
-				
 				bra.s   .EndSwitch
+				
 .CaseOutro02:
 				bsr		OutroAroundEffect
 				bsr		ReplaceOutroImage
 				bra.s   .EndSwitch
+				
 .CaseOutroFalling:
 				bsr		OutroAroundEffect
 				bsr		CharaFalling
 				bra.s   .EndSwitch
+				
+.CasePlasma:
+				bsr		PlasmaEffect
+				bra.s   .EndSwitch
 				nop
+
 .EndSwitch:				
 
 				bsr		DrawVblTimer
@@ -140,27 +149,183 @@ MainLoop:
 STATUS_DEMO_OUTRO_01			equ			1
 STATUS_DEMO_OUTRO_02			equ			2
 STATUS_DEMO_OUTRO_FALLING		equ			3
+STATUS_DEMO_PLASMA_EFFECT  		equ			4
 
 	even
-DemoStatus:			dc.l	STATUS_DEMO_OUTRO_01
+DemoStatus:			dc.l	STATUS_DEMO_PLASMA_EFFECT
 ReplaceXOffset:		dc.l	16
 ReplaceYOffset:		dc.l	16
 
 ;=============================================================================
 ; Start outro
 ;=============================================================================
+PlasmaEffect:
+				lea		ScreenBase(pc),a4
+				move.l	(a4),a4
+				add.l	#32,a4
+				
+				lea		SinTable512(pc),a3
+				lea		ColorLUT(pc),a2			; Color in table
+				
+				lea		NbLoop(pc),a1
+				move.l	(a1),d5
+				lsl.l	#1,d5					; Speed *2
+				and.w	#$FF,d5					; Keep under 256
+				
+				btst	#2,d5
+				beq.s	.NoDecal
+				;DBGBREAK
+				add.w	#256,a4
+.NoDecal:				
+				moveq	#60,d7
+.LoopY:
+				; Wave Y
+				move.w	d7,d3
+				add.w	d5,d3					; Y + T (Max: 63 + 255 = 318)
+				move.b	(a3,d3.w),d3			; d3 = Wave Y (0-85)
+				
+				moveq	#64,d6
+.LoopX:
+				; Wave X
+				move.w	d6,d1					; d1 = X
+				add.w	d5,d1					; d1 = X + T
+				move.w	d1,d4
+				move.b	(a3,d1.w),d0			; d0 = Wave X (0-85)
+				
+				; Wave X+Y
+				add.w	d7,d4					; d4 = (X+T) + Y (Max: 64+255+63 = 382)
+				move.b	(a3,d4.w),d2			; d2 = Wave X+Y (0-85)
+				
+				; Wave sum
+				add.b	d3,d0
+				add.b	d2,d0
+				
+				; Color from table
+				and.w	#$FF,d0
+				lsl.w	#2,d0
+				move.l	(a2,d0.w),d1
+				
+				; Write color
+				;move.l	d1,128(a4)
+				move.l	d1,(a4)+
+				;move.l	d1,126+128(a4)
+				;move.w	d1,128*3(a4)
+				;add.w	#2,a4
+				
+				subq.w	#4,d6
+				bne.s	.LoopX
+				
+				lea		128*4-64(a4),a4
+				dbra	d7,.LoopY
+
+				rts
+
+SinTable512:
+    dc.b 63,64,65,66,66,67,67,68,68,68,68,68,67,67,66,66
+    dc.b 65,64,64,63,62,61,60,59,57,56,55,54,53,52,50,49
+    dc.b 48,47,46,45,44,43,42,42,41,40,40,39,39,38,38,38
+    dc.b 37,37,37,37,37,38,38,38,38,39,39,40,40,40,41,41
+    dc.b 42,43,43,44,44,44,45,45,46,46,46,46,47,47,47,47
+    dc.b 47,46,46,46,45,45,44,44,43,42,42,41,40,39,38,37
+    dc.b 36,35,34,32,31,30,29,28,27,25,24,23,22,21,20,20
+    dc.b 19,18,18,17,17,16,16,16,16,16,17,17,18,18,19,20
+    dc.b 21,22,23,24,26,27,29,31,32,34,36,38,40,42,45,47
+    dc.b 49,51,53,55,58,60,62,64,66,68,69,71,73,74,76,77
+    dc.b 78,79,80,81,82,82,82,82,82,82,82,81,81,80,79,78
+    dc.b 77,75,74,72,70,68,66,64,62,60,57,55,52,50,47,45
+    dc.b 42,39,37,34,32,29,27,24,22,20,18,16,14,12,10,09
+    dc.b 07,06,05,04,03,03,02,02,02,02,02,02,02,03,04,05
+    dc.b 06,07,08,10,11,13,15,16,18,20,22,24,26,29,31,33
+    dc.b 35,37,39,42,44,46,48,50,52,53,55,57,58,60,61,62
+    dc.b 63,64,65,66,66,67,67,68,68,68,68,68,67,67,66,66
+    dc.b 65,64,64,63,62,61,60,59,57,56,55,54,53,52,50,49
+    dc.b 48,47,46,45,44,43,42,42,41,40,40,39,39,38,38,38
+    dc.b 37,37,37,37,37,38,38,38,38,39,39,40,40,40,41,41
+    dc.b 42,43,43,44,44,44,45,45,46,46,46,46,47,47,47,47
+    dc.b 47,46,46,46,45,45,44,44,43,42,42,41,40,39,38,37
+    dc.b 36,35,34,32,31,30,29,28,27,25,24,23,22,21,20,20
+    dc.b 19,18,18,17,17,16,16,16,16,16,17,17,18,18,19,20
+    dc.b 21,22,23,24,26,27,29,31,32,34,36,38,40,42,45,47
+    dc.b 49,51,53,55,58,60,62,64,66,68,69,71,73,74,76,77
+    dc.b 78,79,80,81,82,82,82,82,82,82,82,81,81,80,79,78
+    dc.b 77,75,74,72,70,68,66,64,62,60,57,55,52,50,47,45
+    dc.b 42,39,37,34,32,29,27,24,22,20,18,16,14,12,10,09
+    dc.b 07,06,05,04,03,03,02,02,02,02,02,02,02,03,04,05
+    dc.b 06,07,08,10,11,13,15,16,18,20,22,24,26,29,31,33
+    dc.b 35,37,39,42,44,46,48,50,52,53,55,57,58,60,61,62	
+
+ColorLUT:
+    ; --- Bloc 0 (Index 0 à 31) - Noir ---
+    ; Aucun des bits 5, 6 ou 7 n'est à 1.
+    dc.l $00000000,$00000000,$00000000,$00000000,$00000000,$00000000,$00000000,$00000000
+    dc.l $00000000,$00000000,$00000000,$00000000,$00000000,$00000000,$00000000,$00000000
+    dc.l $00000000,$00000000,$00000000,$00000000,$00000000,$00000000,$00000000,$00000000
+    dc.l $00000000,$00000000,$00000000,$00000000,$00000000,$00000000,$00000000,$00000000
+
+    ; --- Bloc 1 (Index 32 à 63) - Bleu ---
+    ; Seul le bit 5 (valeur 32) est à 1.
+    dc.l $00550055,$00550055,$00550055,$00550055,$00550055,$00550055,$00550055,$00550055
+    dc.l $00550055,$00550055,$00550055,$00550055,$00550055,$00550055,$00550055,$00550055
+    dc.l $00550055,$00550055,$00550055,$00550055,$00550055,$00550055,$00550055,$00550055
+    dc.l $00550055,$00550055,$00550055,$00550055,$00550055,$00550055,$00550055,$00550055
+
+    ; --- Bloc 2 (Index 64 à 95) - Vert ---
+    ; Seul le bit 6 (valeur 64) est à 1.
+    dc.l $AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00
+    dc.l $AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00
+    dc.l $AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00
+    dc.l $AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00
+
+    ; --- Bloc 3 (Index 96 à 127) - Cyan (Vert + Bleu) ---
+    ; Bits 5 et 6 sont à 1. ($AA00 | $0055 = $AA55)
+    dc.l $AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55
+    dc.l $AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55
+    dc.l $AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55
+    dc.l $AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55
+
+    ; --- Bloc 4 (Index 128 à 159) - Rouge ---
+    ; Seul le bit 7 (valeur 128) est à 1.
+    dc.l $00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA
+    dc.l $00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA
+    dc.l $00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA
+    dc.l $00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA
+
+    ; --- Bloc 5 (Index 160 à 191) - Magenta (Rouge + Bleu) ---
+    ; Bits 5 et 7 sont à 1. ($00AA | $0055 = $00FF)
+    dc.l $00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF
+    dc.l $00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF
+    dc.l $00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF
+    dc.l $00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF
+
+    ; --- Bloc 6 (Index 192 à 223) - Jaune (Rouge + Vert) ---
+    ; Bits 6 et 7 sont à 1. ($00AA | $AA00 = $AAAA)
+    dc.l $AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA
+    dc.l $AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA
+    dc.l $AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA
+    dc.l $AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA
+
+    ; --- Bloc 7 (Index 224 à 255) - Blanc (Rouge + Vert + Bleu) ---
+    ; Bits 5, 6 et 7 sont à 1.
+    dc.l $AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF
+    dc.l $AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF
+    dc.l $AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF
+    dc.l $AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF
+	
+;=============================================================================
+; Start outro
+;=============================================================================
 StartOutro:
 				lea		Outro01(pc),a0
 				lea		$20000,a1
-				bsr		zx0_decompress
+				;bsr		zx0_decompress
 
 				lea		Outro01(pc),a0
 				lea		$28000,a1
-				bsr		zx0_decompress
+				;bsr		zx0_decompress
 
 				lea		Outro02(pc),a0
 				lea		BufferData(pc),a1
-				bsr		zx0_decompress
+				;bsr		zx0_decompress
 
 				rts
 				
@@ -470,7 +635,7 @@ ImageDeformationTest:
 	even
 	include "unzx0_68000.asm"
 	even
-	;include "PlotPixel.asm"
+	include "PlotPixel.asm"
 	even
 	;include "sinus.asm"
 ;=============================================================================
@@ -724,6 +889,25 @@ NbLoop:						dc.l	0
 	even
 							dcb.b	2048,0
 TopOfStack:
+	even
+
+SinTable0_80:
+    dc.b 42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57
+    dc.b 58,59,60,61,62,63,64,65,66,66,67,68,69,70,71,71
+    dc.b 72,73,73,74,75,76,76,77,77,78,78,79,79,80,80,81
+    dc.b 81,82,82,82,83,83,83,83,84,84,84,84,84,84,84,84
+    dc.b 85,84,84,84,84,84,84,84,84,83,83,83,83,82,82,82
+    dc.b 81,81,80,80,79,79,78,78,77,77,76,76,75,74,73,73
+    dc.b 72,71,71,70,69,68,67,66,66,65,64,63,62,61,60,59
+    dc.b 58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43
+    dc.b 42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27
+    dc.b 26,25,24,23,22,21,20,19,18,18,17,16,15,14,13,13
+    dc.b 12,11,11,10,9,8,8,7,7,6,6,5,5,4,4,3
+    dc.b 3,2,2,2,1,1,1,1,0,0,0,0,0,0,0,0
+    dc.b 0,0,0,0,0,0,0,0,0,1,1,1,1,2,2,2
+    dc.b 3,3,4,4,5,5,6,6,7,7,8,8,9,10,11,11
+    dc.b 12,13,13,14,15,16,17,18,18,19,20,21,22,23,24,25
+    dc.b 26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41
 	even
 
 TableSpeSin:
