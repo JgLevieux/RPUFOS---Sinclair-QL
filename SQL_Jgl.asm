@@ -74,29 +74,56 @@ MainLoop:
 				beq.s	.NoESC
 				DBGBREAK
 .NoESC:
-
-				lea     NbLoop(pc),a0
-				add.l	#1,(a0)
-				move.l	(a0),d6
-
 				lea		Keyboard(pc),a1
 				move.b	1(a1),d4					; d4 = bits clavier
 				btst	#Keyboard01_Enter,d4		; Press space to move while tracing
 				beq.s	.nobreakpoint
 				DBGBREAK
 				
-				bsr			SoundTest
+				;bsr			SoundTest
 				
 .nobreakpoint:
+
+				lea     NbLoop(pc),a0
+				add.l	#1,(a0)
+				move.l	(a0),d6
 				;lea		ScreenBase(pc),a0
 				;move.l	(a0),a0
 				;bsr     ClearScreen
 
-				;bsr		ImageDeformationTest
-				;bsr		ReplaceOutroImage
-				;bsr		OutroAroundEffect
+				lea		DemoStatus(pc),a0
+				move.l	(a0),d0
+
+				cmp.l	#STATUS_DEMO_OUTRO_01,d0
+				beq.s   .CaseOutro01
+
+				cmp.l	#STATUS_DEMO_OUTRO_02,d0
+				beq.s   .CaseOutro02
 				
+				cmp.l	#STATUS_DEMO_OUTRO_FALLING,d0
+				beq.s   .CaseOutroFalling
+				
+				bra.s   .EndSwitch
+
+.CaseOutro01:
+				cmp.l	#150,d6
+				bmi		.NotEndCaseOutro01
+				move.l	#STATUS_DEMO_OUTRO_02,(a0)
+
+.NotEndCaseOutro01:
+				bsr		OutroAroundEffect
+				
+				bra.s   .EndSwitch
+.CaseOutro02:
+				bsr		OutroAroundEffect
+				bsr		ReplaceOutroImage
+				bra.s   .EndSwitch
+.CaseOutroFalling:
+				bsr		OutroAroundEffect
 				bsr		CharaFalling
+				bra.s   .EndSwitch
+				nop
+.EndSwitch:				
 
 				bsr		DrawVblTimer
 
@@ -108,37 +135,39 @@ MainLoop:
                 rts
 
 ;=============================================================================
+; Demo var
+;=============================================================================
+STATUS_DEMO_OUTRO_01			equ			1
+STATUS_DEMO_OUTRO_02			equ			2
+STATUS_DEMO_OUTRO_FALLING		equ			3
+
+	even
+DemoStatus:			dc.l	STATUS_DEMO_OUTRO_01
+ReplaceXOffset:		dc.l	16
+ReplaceYOffset:		dc.l	16
+
+;=============================================================================
 ; Start outro
 ;=============================================================================
 StartOutro:
 				lea		Outro01(pc),a0
 				lea		$20000,a1
-				;bsr		zx0_decompress
+				bsr		zx0_decompress
 
 				lea		Outro01(pc),a0
 				lea		$28000,a1
-				;bsr		zx0_decompress
+				bsr		zx0_decompress
 
 				lea		Outro02(pc),a0
 				lea		BufferData(pc),a1
 				bsr		zx0_decompress
 
-				;CleanVarL ReplaceXOffset,a0
-				;CleanVarL ReplaceYOffset,a0
-				
 				rts
-
 				
 ;=============================================================================
 ; Chara falling phase
 ;=============================================================================
 CharaFalling:
-;		d0.l = x
-;		d1.l = y
-;		a0 = screen base
-;		a1 = sprite base
-				DBGBREAK
-
 				lea		ScreenBase(pc),a0
 				move.l	(a0),a0
 				lea		OlipixChara(pc),a1
@@ -150,9 +179,6 @@ CharaFalling:
 ;=============================================================================
 ; Replace outro 01 with outro 02 overtime
 ;=============================================================================
-ReplaceXOffset:	dc.l	16
-ReplaceYOffset:	dc.l	16
-
 ReplaceOutroImage:
 				lea     NbLoop(pc),a4
 				move.l	(a4),d7
@@ -206,6 +232,9 @@ ReplaceOutroImage:
 .EndReplaceOutroImage:
 				rts
 .StopReplaceOutroImage:
+				lea		DemoStatus(pc),a0
+				move.l	#STATUS_DEMO_OUTRO_FALLING,(a0)
+
 				move.l	#16,(a3)
 				move.l	#16,(a4)
 				rts
@@ -236,6 +265,7 @@ OutroAroundEffect:
 
 				lea     NbLoop(pc),a4
 				move.l	(a4),d7
+				
 				and.l	#7,d7
 				lsl.l	#7,d7
 				add.l	d7,a6
@@ -367,6 +397,7 @@ OutroAroundEffect:
 				movem.l	d4-d6/a0,-(a6)
 			endr
 				dbra	d7,.L4u
+				
 				rts
 				
 				
@@ -374,6 +405,7 @@ OutroAroundEffect:
 ; Image deformation test
 ;=============================================================================
 ImageDeformationTest:
+	if 0
 				lea		ScreenBase(pc),a6
 				move.l	(a6),a6
 				add.l	#128/2-128/2/2,a6
@@ -424,7 +456,7 @@ ImageDeformationTest:
 			endr
     
     			;movem.l d0-d7/a1-a6,-(sp)
-
+	endif
 
 				rts
 
@@ -438,7 +470,7 @@ ImageDeformationTest:
 	even
 	include "unzx0_68000.asm"
 	even
-	include "PlotPixel.asm"
+	;include "PlotPixel.asm"
 	even
 	;include "sinus.asm"
 ;=============================================================================
@@ -521,104 +553,6 @@ DisplayText:
 .endoftext:
 				rts
 
-;=============================================================================
-; Number to Ascii (00-99)
-; Input : -
-;		d0.w = number
-;		a0 = text address to fill
-; Destroy :
-;		d0, d1, d2, d5, d6
-;		a0, a1
-;=============================================================================
-NumberToAscii_00:
-				moveq	#0,d1
-.ten:
-				add.w	#1,d1
-				sub.w	#10,d0
-				bge.s	.ten
-
-				sub.w	#1,d1
-				add.b	#"0",d1
-				move.b	d1,0(a0)
-				add.w	#10,d0
-
-				add.b	#"0",d0
-				move.b	d0,1(a0)
-				rts
-
-;=============================================================================
-; Number to Ascii (000000-999999)
-; Input : -
-;		d0.l = number
-;		a0 = text address to fill
-; Destroy :
-;		d0, d1, d2, d5, d6
-;		a0, a1
-;=============================================================================
-NumberToAscii_000000:
-				moveq	#0,d1
-.l000000:
-				add.w	#1,d1
-				sub.l	#1000000,d0
-				bge.s	.l000000
-				sub.w	#1,d1
-				add.b	#"0",d1
-				move.b	d1,0(a0)
-				add.l	#1000000,d0
-
-				moveq	#0,d1
-.l00000:
-				add.w	#1,d1
-				sub.l	#100000,d0
-				bge.s	.l00000
-				sub.w	#1,d1
-				add.b	#"0",d1
-				move.b	d1,1(a0)
-				add.l	#100000,d0
-
-				moveq	#0,d1
-.l0000:
-				add.w	#1,d1
-				sub.l	#10000,d0
-				bge.s	.l0000
-				sub.w	#1,d1
-				add.b	#"0",d1
-				move.b	d1,2(a0)
-				add.l	#10000,d0
-
-				moveq	#0,d1
-.l000:
-				add.w	#1,d1
-				sub.l	#1000,d0
-				bge.s	.l000
-				sub.w	#1,d1
-				add.b	#"0",d1
-				move.b	d1,3(a0)
-				add.l	#1000,d0
-
-				moveq	#0,d1
-.l00:
-				add.w	#1,d1
-				sub.l	#100,d0
-				bge.s	.l00
-				sub.w	#1,d1
-				add.b	#"0",d1
-				move.b	d1,4(a0)
-				add.l	#100,d0
-
-				moveq	#0,d1
-.l0:
-				add.w	#1,d1
-				sub.l	#10,d0
-				bge.s	.l0
-				sub.w	#1,d1
-				add.b	#"0",d1
-				move.b	d1,5(a0)
-				add.l	#10,d0
-
-				add.b	#"0",d0
-				move.b	d0,6(a0)
-				rts
 
 ;=============================================================================
 ; Display a sprite, 32x32 with mask , !!! no clipping !!!
@@ -661,286 +595,6 @@ DisplaySprite32x32Masked:
 				rts
 
 ;=============================================================================
-; Display a sprite, 16x16 with mask & shifting, !!! no clipping !!!
-; Input : -
-;		d0.l = x
-;		d1.l = y
-;		a0 = screen base
-;		a1 = sprite base
-; Output : -
-; Destroy :
-;		d0, d1, d2, d3
-;		a0, a1, a2
-;
-; TODO : 
-;	- optimiser avec du .b/.w (255 max pour les coord)
-;=============================================================================
-DisplaySprite16x16MaskedShifted:
-				;DBGBREAK
-				move.l	d0,d3
-				lsr.l	#2,d0			; /4, 4 pixels per word.
-				add.l	d0,d0			; *2
-				lsl.l	#7,d1			; y*128
-				add.l	d1,a0			; +y screen
-				add.l	d0,a0			; +x screen
-						
-				and.l	#3,d3			; keep 2 bits for shifting (0-3)
-				move.l	d3,d2		
-				move.l	d3,d1
-				lsl.l	#2,d3			; *4
-				lsl.l	#8,d3			; *256
-				add.l	d1,d1			; *2
-				lsl.l	#8,d1			; *256
-				lsl.l	#6,d2			; *64
-				add.l	d3,d2			;
-				add.l	d1,d2			; *1600
-
-				add.l	d2,a1			; a1 = sprite
-				move.l	a1,a2
-				lea		160*5(a2),a2		; a2 = mask
-
-				move.w  #118,d1
-                
-			rept 16  ; lines
-					move.l  (a0),d0
-					and.l   (a2)+,d0
-					or.l    (a1)+,d0
-					move.l  d0,(a0)+
-					
-					move.l  (a0),d0
-					and.l   (a2)+,d0
-					or.l    (a1)+,d0
-					move.l  d0,(a0)+
-
-					move.w  (a0),d0
-					and.w   (a2)+,d0
-					or.w    (a1)+,d0
-					move.w  d0,(a0)+
-					
-					adda.w  d1,a0
-			endr
-				
-	if 0
-		rept 16	; lines
-			rept 5 ; words
-				move.w	(a0),d0			; Get the pixels on the screen
-				and.w	(a2)+,d0		; Apply sprite mask
-				or.w	(a1)+,d0		; Apply sprite color
-				move.w	d0,(a0)+		; Write final pixel
-			endr
-		
-				lea		118(a0),a0
-		endr
-	endif
-				rts
-
-	
-;=============================================================================
-; Display a sprite, 8x8 with mask & shifting, !!! no clipping !!!
-; Input : -
-;		d0.l = x
-;		d1.l = y
-;		a0 = screen base
-;		a1 = sprite base
-; Output : -
-; Destroy :
-;		d0, d1, d2, d3
-;		a0, a1, a2
-;
-; TODO : 
-;	- optimiser avec du .b/.w (255 max pour les coord)
-;=============================================================================
-DisplaySprite8x8MaskedShifted:
-				move.l	d0,d3
-				lsr.l	#2,d0			; /4, 4 pixels per word.
-				add.l	d0,d0			; *2
-				lsl.l	#7,d1			; y*128
-				add.l	d1,a0			; +y screen
-				add.l	d0,a0			; +x screen
-						
-				and.l	#3,d3			; keep 2 bits for shifting (0-3)
-				move.l	d3,d2		
-				lsl.l	#6,d3			; *64
-				lsl.l	#5,d2			; *32
-				add.l	d3,d2			; *96
-
-				add.l	d2,a1			; a1 = sprite
-				move.l	a1,a2
-				lea		48(a2),a2		; a2 = mask
-			
-				move.w  #122,d1
-                
-			rept 8  ; lines
-					move.l  (a0),d0
-					and.l   (a2)+,d0
-					or.l    (a1)+,d0
-					move.l  d0,(a0)+
-					
-					move.w  (a0),d0
-					and.w   (a2)+,d0
-					or.w    (a1)+,d0
-					move.w  d0,(a0)+
-					
-					adda.w  d1,a0
-			endr
-				rts
-				
-;=============================================================================
-; Clean a sprite, 8x8 with shifting, !!! no clipping !!!
-; Get "originals" pixels into the Qlix background
-; Input : -
-;		d0.l = x
-;		d1.l = y
-;		a0 = screen base
-;		a1 = screen to copy
-; Output : -
-; Destroy :
-;		d0, d1
-;		a0, a1
-;
-; TODO : 
-;	- optimiser avec du .b/.w (255 max pour les coord)
-;	- optimiser en enlevant le lea en trop en fin de rept
-;=============================================================================
-CleanSprite8x8Shifted:
-				lsr.l	#2,d0			; /4, 4 pixels per word.
-				lsl.l	#1,d0			; *2
-				lsl.l	#7,d1			; y*128
-				add.l	d0,d1			; +y screen +x screen
-				add.l	d1,a0			; dest adr
-				add.l	d1,a1			; source adr
-						
-		rept 8	; lines
-				move.l	(a1)+,(a0)+
-				move.w	(a1)+,(a0)+
-
-				lea		122(a0),a0
-				lea		122(a1),a1
-		endr
-				rts
-
-;=============================================================================
-; Save background for a sprite, 8x8 with shifting, !!! no clipping !!!
-; Input : -
-;		d0.l = x
-;		d1.l = y
-;		a0 = screen base
-;		a1 = backup buffer
-; Output : -
-; Destroy :
-;		d0, d1
-;		a0, a1
-;=============================================================================
-SaveSprite8x8Shifted:
-				lsr.l	#2,d0			; /4, 4 pixels per word.
-				add.l	d0,d0			; *2
-				lsl.l	#7,d1			; y*128
-				add.l	d0,d1			; +y screen +x screen
-				add.l	d1,a0			; dest adr
-						
-		rept 7	; lines
-				move.l	(a0)+,(a1)+
-				move.w	(a0)+,(a1)+
-				lea		122(a0),a0
-		endr
-				move.l	(a0)+,(a1)+
-				move.w	(a0)+,(a1)+
-				rts
-				
-;=============================================================================
-; Draw on the background from saved buffer, 8x8 with shifting, !!! no clipping !!!
-; Input : -
-;		d0.l = x
-;		d1.l = y
-;		a0 = screen base
-;		a1 = backup buffer
-; Output : -
-; Destroy :
-;		d0, d1
-;		a0, a1
-;=============================================================================
-BackSprite8x8Shifted:
-				lsr.l	#2,d0			; /4, 4 pixels per word.
-				add.l	d0,d0			; *2
-				lsl.l	#7,d1			; y*128
-				add.l	d0,d1			; +y screen +x screen
-				add.l	d1,a0			; dest adr
-						
-		rept 7	; lines
-				move.l	(a1)+,(a0)+
-				move.w	(a1)+,(a0)+
-				lea		122(a0),a0
-		endr
-				move.l	(a1)+,(a0)+
-				move.w	(a1)+,(a0)+
-				rts
-
-
-;=============================================================================
-; Save background, 32x32 (align to a word)
-; Input : -
-;		d0.l = x
-;		d1.l = y
-;		a0 = screen base
-;		a1 = backup buffer
-; Output : -
-; Destroy :
-;		d0, d1
-;		a0, a1
-;=============================================================================
-Save32x32:
-				lsr.l	#2,d0			; /4, 4 pixels per word.
-				add.l	d0,d0			; *2
-				lsl.l	#7,d1			; y*128
-				add.l	d0,d1			; +y screen +x screen
-				add.l	d1,a0			; dest adr
-						
-		rept 31	; lines
-				move.l	(a0)+,(a1)+
-				move.l	(a0)+,(a1)+
-				move.l	(a0)+,(a1)+
-				move.l	(a0)+,(a1)+
-				lea		128-4*4(a0),a0
-		endr
-				move.l	(a0)+,(a1)+
-				move.l	(a0)+,(a1)+
-				move.l	(a0)+,(a1)+
-				move.l	(a0)+,(a1)+
-				rts
-
-;=============================================================================
-; Save background, 32x32 (align to a word)
-; Input : -
-;		d0.l = x
-;		d1.l = y
-;		a0 = screen base
-;		a1 = backup buffer
-; Output : -
-; Destroy :
-;		d0, d1
-;		a0, a1
-;=============================================================================
-Back32x32:
-				lsr.l	#2,d0			; /4, 4 pixels per word.
-				add.l	d0,d0			; *2
-				lsl.l	#7,d1			; y*128
-				add.l	d0,d1			; +y screen +x screen
-				add.l	d1,a0			; dest adr
-						
-		rept 31	; lines
-				move.l	(a1)+,(a0)+
-				move.l	(a1)+,(a0)+
-				move.l	(a1)+,(a0)+
-				move.l	(a1)+,(a0)+
-				lea		128-4*4(a0),a0
-		endr
-				move.l	(a1)+,(a0)+
-				move.l	(a1)+,(a0)+
-				move.l	(a1)+,(a0)+
-				move.l	(a1)+,(a0)+
-				rts
-				
-;=============================================================================
 ; Display a sprite, 8x8 no mask, no shifting, !!! no clipping !!!
 ; Input : -
 ;		d0.l = x
@@ -970,102 +624,6 @@ DisplaySprite8x8:
 				move.l  (a1)+,640(a0)
 				move.l  (a1)+,768(a0)
 				move.l  (a1)+,896(a0)
-
-				rts
-
-DisplaySprite16x16:
-				lsr.l	#2,d0			; /4, 4 pixels per word.
-				add.l	d0,d0			; *2
-				lsl.l	#7,d1			; y*128
-				add.l	d1,a0			; +y screen
-				add.l	d0,a0			; +x screen
-
-				move.w	#120,d0
-		rept 16	; lines
-				move.l	(a1)+,(a0)+
-				move.l	(a1)+,(a0)+
-				
-				add.w	d0,a0
-		endr
-				rts
-
-; =============================================================================
-; Clear 8x8 (3 words for shifting), !!! no clipping !!!
-; Input : -
-;		d0.l = x
-;		d1.l = y
-;		a0 = screen base
-; Output : -
-; Destroy :
-;		d0, d1
-;		a0
-;
-; TODO : 
-;	- optimiser avec du .b (255 max pour les coord)
-;	- optimiser en enlevant le lea en trop en fi de rept
-; =============================================================================
-ClearSprite8x8MaskedShifted:
-				lsr.l	#2,d0			; /4, 4 pixels per word.
-				lsl.l	#1,d0			; *2
-				lsl.l	#7,d1			; y*128
-				add.l	d1,a0			; +y screen
-				add.l	d0,a0			; +x screen
-						
-		rept 8	; lines
-				clr.l	(a0)+
-				clr.w	(a0)+
-				lea		122(a0),a0
-		endr
-				rts
-
-; =============================================================================
-; Clear 8x8  !!! no clipping !!!
-; Input : -
-;		d0.l = x
-;		d1.l = y
-;		a0 = screen base
-; Output : -
-; Destroy :
-;		d0, d1
-;		a0
-;
-; TODO : 
-;	- optimiser avec du .b (255 max pour les coord)
-;	- optimiser en enlevant le lea en trop en fi de rept
-; =============================================================================
-ClearSprite8x8:
-				lsr.l	#2,d0			; /4, 4 pixels per word.
-				add.l	d0,d0			; *2
-				lsl.l	#7,d1			; y*128
-				add.l	d1,a0			; +y screen
-				add.l	d0,a0			; +x screen
-						
-				moveq   #0,d0
-                move.l  d0,(a0)
-                move.l  d0,128(a0)
-                move.l  d0,256(a0)
-                move.l  d0,384(a0)
-                move.l  d0,512(a0)
-                move.l  d0,640(a0)
-                move.l  d0,768(a0)
-                move.l  d0,896(a0)
-
-				rts
-
-ClearSprite16x16:
-				lsr.l	#2,d0			; /4, 4 pixels per word.
-				add.l	d0,d0			; *2
-				lsl.l	#7,d1			; y*128
-				add.l	d1,a0			; +y screen
-				add.l	d0,a0			; +x screen
-						
-				moveq   #0,d0
-                move.w  #120,d1
-		rept 16
-				move.l  d0,(a0)+
-				move.l  d0,(a0)+
-				adda.w  d1,a0
-		endr
 
 				rts
 
