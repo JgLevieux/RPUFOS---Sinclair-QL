@@ -68,7 +68,7 @@ MainLoop:
 
 				bsr		SwapBuffer
 
-				bsr 	ReadKeyboard
+				;bsr 	ReadKeyboard
 
 				btst	#Keyboard01_ESC,1(a1)
 				beq.s	.NoESC
@@ -152,7 +152,7 @@ STATUS_DEMO_OUTRO_FALLING		equ			3
 STATUS_DEMO_PLASMA_EFFECT  		equ			4
 
 	even
-DemoStatus:			dc.l	STATUS_DEMO_PLASMA_EFFECT
+DemoStatus:			dc.l	STATUS_DEMO_OUTRO_FALLING
 ReplaceXOffset:		dc.l	16
 ReplaceYOffset:		dc.l	16
 
@@ -317,22 +317,57 @@ ColorLUT:
 StartOutro:
 				lea		Outro01(pc),a0
 				lea		$20000,a1
-				;bsr		zx0_decompress
+				bsr		zx0_decompress
 
 				lea		Outro01(pc),a0
 				lea		$28000,a1
-				;bsr		zx0_decompress
+				bsr		zx0_decompress
 
 				lea		Outro02(pc),a0
 				lea		BufferData(pc),a1
-				;bsr		zx0_decompress
+				bsr		zx0_decompress
 
+				lea		Outro02(pc),a0
+				lea		$20000,a1
+				bsr		zx0_decompress
+
+				lea		Outro02(pc),a0
+				lea		$28000,a1
+				bsr		zx0_decompress
 				rts
+
+;62,128,16,188
+;95,128,53,239
+;113,128,92,239
+;128,128,128,239
+;146,128,167,239
+;163,128,205,239
+;196,128,239,188
+
 				
 ;=============================================================================
 ; Chara falling phase
 ;=============================================================================
 CharaFalling:
+				lea		ScreenBase(pc),a0
+				move.l	(a0),a0
+
+				lea     NbLoop(pc),a4
+				move.l	(a4),d7
+				and.l	#127,d7
+				move.l	#$00AA00AA,d0
+				move.l	#$FF55FF55,d1
+				
+				lsl.l	#7,d7
+				add.l	#128*128,a0
+				add.l	d7,a0
+			rept	32
+				and.l	d1,-256(a0)
+				or.l	d0,(a0)+
+			endr
+
+
+; Chara falling
 				lea		ScreenBase(pc),a0
 				move.l	(a0),a0
 				lea		OlipixChara(pc),a1
