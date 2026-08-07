@@ -56,7 +56,8 @@ Start:
 				lea		ScreenBase(pc),a0
 				move.l	#$20000,(a0)
 
-				bsr		StartOutro
+				;bsr		StartOutro
+				;bsr		StartCharaFalling
 				
 MainLoop:
 			; WaitVBlank
@@ -123,7 +124,7 @@ MainLoop:
 				bra.s   .EndSwitch
 				
 .CaseOutroFalling:
-				bsr		OutroAroundEffect
+				;bsr		OutroAroundEffect
 				bsr		CharaFalling
 				bra.s   .EndSwitch
 				
@@ -152,7 +153,7 @@ STATUS_DEMO_OUTRO_FALLING		equ			3
 STATUS_DEMO_PLASMA_EFFECT  		equ			4
 
 	even
-DemoStatus:			dc.l	STATUS_DEMO_OUTRO_FALLING
+DemoStatus:			dc.l	STATUS_DEMO_PLASMA_EFFECT
 ReplaceXOffset:		dc.l	16
 ReplaceYOffset:		dc.l	16
 
@@ -217,6 +218,12 @@ PlasmaEffect:
 				
 				lea		128*4-64(a4),a4
 				dbra	d7,.LoopY
+
+				lea		NbLoop(pc),a1
+				cmp.l	#50*5,(a1)
+				bmi.s	.NoNextPart
+				bsr		StartOutro
+.NoNextPart:
 
 				rts
 
@@ -315,6 +322,12 @@ ColorLUT:
 ; Start outro
 ;=============================================================================
 StartOutro:
+				lea		DemoStatus(pc),a0
+				move.l	#STATUS_DEMO_OUTRO_01,(a0)
+
+				lea     NbLoop(pc),a1
+				move.l	#0,(a1)
+
 				lea		Outro01(pc),a0
 				lea		$20000,a1
 				bsr		zx0_decompress
@@ -326,55 +339,205 @@ StartOutro:
 				lea		Outro02(pc),a0
 				lea		BufferData(pc),a1
 				bsr		zx0_decompress
-
-				lea		Outro02(pc),a0
-				lea		$20000,a1
-				bsr		zx0_decompress
-
-				lea		Outro02(pc),a0
-				lea		$28000,a1
-				bsr		zx0_decompress
 				rts
+				
+;=============================================================================
+; Start Chara falling phase
+;=============================================================================
+StartCharaFalling:
+				lea		DemoStatus(pc),a0
+				move.l	#STATUS_DEMO_OUTRO_FALLING,(a0)
 
-;62,128,16,188
-;95,128,53,239
-;113,128,92,239
-;128,128,128,239
-;146,128,167,239
-;163,128,205,239
-;196,128,239,188
+				lea     NbLoop(pc),a1
+				move.l	#0,(a1)
 
+				lea		BufferData(pc),a1
+				add.l	#108/2+80*128,a1
+
+				move.l	#32-1,d7
+.LoopClearChara:
+			rept 5
+				move.l  #$0,(a1)+
+			endr
+				lea		(128-4*5)(a1),a1
+				dbra	d7,.LoopClearChara
+
+				lea		BufferData(pc),a0
+				lea		$20000,a1
+				bsr		CopyScreen
+
+				lea		BufferData(pc),a0
+				lea		$28000,a1
+				bsr		CopyScreen
+
+				rts
 				
 ;=============================================================================
 ; Chara falling phase
 ;=============================================================================
 CharaFalling:
-				lea		ScreenBase(pc),a0
-				move.l	(a0),a0
 
-				lea     NbLoop(pc),a4
-				move.l	(a4),d7
-				and.l	#127,d7
-				move.l	#$00AA00AA,d0
-				move.l	#$FF55FF55,d1
+; Grow Rainbow
+				lea		RainbowPos(pc),a5
+				lea		ScreenBase(pc),a4
+				move.l	(a4),a4
+
+SPEED_RAINBOW	equ 64
+SPEED_CHARA		equ 128
 				
-				lsl.l	#7,d7
-				add.l	#128*128,a0
-				add.l	d7,a0
-			rept	32
-				and.l	d1,-256(a0)
-				or.l	d0,(a0)+
+	macro DrawRainbow
+				move.l	#\5,d0
+				move.l	\2(a5),d1
+				cmp.l	#255,\2(a5)
+				bmi.s	.NoSub\@
+				sub.l	#SPEED_RAINBOW,\2(a5)
+.NoSub\@:
+				lsr.l	#8,d1
+			rept 6
+				bsr		PlotPixel\1
+				add.l	#1,d0
 			endr
 
+				move.l	#\5,d0
+				move.l	\3(a5),d1
+				cmp.l	#\4*255,\3(a5)
+				bge.s	.NoAdd\@
+				add.l	#SPEED_RAINBOW,\3(a5)
+.NoAdd\@:
+				lsr.l	#8,d1
+			rept 6
+				bsr		PlotPixel\1
+				add.l	#1,d0
+			endr
+	endm
+	
+				DrawRainbow <Blue>, <0>, <24>, <125>, <111>
+				DrawRainbow <Cyan>, <4>, <28>, <120>, <111+6>
+				DrawRainbow <Green>, <8>, <32>, <115>, <111+6*2>
+				DrawRainbow <Yellow>, <12>, <36>, <110>, <111+6*3>
+				DrawRainbow <Magenta>, <16>, <40>, <115>, <111+6*4>
+				DrawRainbow <Red>, <20>, <44>, <120>, <111+6*5>
 
 ; Chara falling
+				lea     NbLoop(pc),a4
 				lea		ScreenBase(pc),a0
 				move.l	(a0),a0
+
 				lea		OlipixChara(pc),a1
+				lea		CharaPos(pc),a5
 				move.l	#112,d0
-				move.l	#80,d1
-				bsr		DisplaySprite32x32Masked
+				move.l	(a5),d1
+				add.l	#SPEED_CHARA,(a5)
+				lsr.l	#8,d1
+				move.l	d1,d4
+				
+				lea		BufferData(pc),a3
+				cmp.l	#0,(a4)
+				bne.s	.NotFirstChara
+				move.l	a0,a3
+.NotFirstChara:
+				move.l	d0,d3
+				lsr.l	#2,d0			; /4, 4 pixels per word.
+				add.l	d0,d0			; *2
+				lsl.l	#7,d1			; y*128
+				add.l	d1,a0			; +y screen
+				add.l	d0,a0			; +x screen
+
+				add.l	d1,a3
+				add.l	d0,a3
+						
+				move.l	a1,a2
+				lea		512(a2),a2		; a2 = mask
+
+				move.w  #128-32/2,d1
+                
+				move.l	#32-1,d7
+.LoopSpr32:
+				cmp.l	#255,d4
+				bge.s	.EndLoopSpr
+				add.l	#1,d4
+			rept 4
+				move.l  (a3)+,d0
+				and.l   (a2)+,d0
+				or.l    (a1)+,d0
+				move.l  d0,(a0)+
+			endr
+				adda.w  d1,a0
+				adda.w  d1,a3
+
+				dbra	d7,.LoopSpr32
+.EndLoopSpr:
+
+; Lines "scroll"
+				lea		TableLinePos(pc),a5
+				lea		ScreenBase(pc),a2
+				move.l	(a2),a2
+				add.l	#128*128,a2
+
+				move.l	#$00AA00AA,d0
+				move.l	#$FF55FF55,d1
+
+				move.l	#0,d3
+				move.l	#6-1,d2			; 6 Lines
+.LoopLine:
+				move.l	(a4),d7
+				add.l	d3,d7
+
+				move.l	d7,d5
+				sub.l	#2,d5
+				and.l	#127,d7
+				lsl.l	#1,d7
+				and.l	#127,d5
+				lsl.l	#1,d5			; Coord of current frame and frame n-2 (double buffer)
+				
+				moveq	#0,d6
+				move.w	(a5,d7.w),d6
+				moveq	#0,d4
+				move.w	(a5,d5.w),d4	; Get the coord from table
+
+				move.l	a2,a0
+				lsl.l	#7,d6
+				add.l	d6,a0			; New line adr
+				
+				move.l	a2,a1
+				lsl.l	#7,d4
+				add.l	d4,a1			; Prev line adr (n-2)
+				
+			rept	32
+				and.l	d1,(a1)+		; Erase red bits
+				or.l	d0,(a0)+		; Write red bits
+			endr
+
+				add.l	#128/6,d3
+				dbra	d2,.LoopLine
+
 				rts
+	even
+CharaPos:
+	dc.l	80*256
+
+RainbowPos:
+	dc.l	16*256, 16*256, 16*256, 16*256, 16*256, 16*256
+	dc.l	72*256, 72*256, 72*256, 72*256, 72*256, 72*256
+
+TableLinePos:
+	dc.w   0,   0,   0,   0,   0,   0,   0,   1
+    dc.w   1,   1,   1,   1,   1,   1,   1,   1
+    dc.w   2,   2,   2,   2,   2,   2,   2,   3
+    dc.w   3,   3,   3,   3,   3,   4,   4,   4
+    dc.w   4,   4,   5,   5,   5,   5,   6,   6
+    dc.w   6,   6,   7,   7,   7,   7,   8,   8
+    dc.w   8,   9,   9,  10,  10,  10,  11,  11
+    dc.w  12,  12,  12,  13,  13,  14,  14,  15
+    dc.w  16,  16,  17,  17,  18,  19,  19,  20
+    dc.w  21,  21,  22,  23,  24,  25,  25,  26
+    dc.w  27,  28,  29,  30,  31,  32,  33,  35
+    dc.w  36,  37,  38,  40,  41,  42,  44,  45
+    dc.w  47,  48,  50,  52,  53,  55,  57,  59
+    dc.w  61,  63,  65,  67,  69,  72,  74,  76
+    dc.w  79,  82,  84,  87,  90,  93,  96,  99
+    dc.w 102, 106, 109, 113, 116, 120, 124, 126
+	even
 				
 ;=============================================================================
 ; Replace outro 01 with outro 02 overtime
@@ -432,11 +595,8 @@ ReplaceOutroImage:
 .EndReplaceOutroImage:
 				rts
 .StopReplaceOutroImage:
-				lea		DemoStatus(pc),a0
-				move.l	#STATUS_DEMO_OUTRO_FALLING,(a0)
 
-				move.l	#16,(a3)
-				move.l	#16,(a4)
+				bsr		StartCharaFalling
 				rts
 
 ;=============================================================================
@@ -794,6 +954,28 @@ DisplaySprite32x32Masked:
 			endr
 				rts
 
+DisplaySprite32x32:
+				;DBGBREAK
+				move.l	d0,d3
+				lsr.l	#2,d0			; /4, 4 pixels per word.
+				add.l	d0,d0			; *2
+				lsl.l	#7,d1			; y*128
+				add.l	d1,a0			; +y screen
+				add.l	d0,a0			; +x screen
+						
+				move.l	a1,a2
+				lea		512(a2),a2		; a2 = mask
+
+				move.w  #128-32/2,d1
+                
+			rept 32  ; lines
+				rept 4
+					move.l  (a1)+,(a0)+
+				endr
+					adda.w  d1,a0
+			endr
+				rts
+
 ;=============================================================================
 ; Display a sprite, 8x8 no mask, no shifting, !!! no clipping !!!
 ; Input : -
@@ -904,6 +1086,25 @@ ClearScreen:
 .loop_clear:
 			rept 16
                 movem.l d0-d6/a1,-(a0)      ; 32 bytes * 16
+			endr
+                dbf     d7,.loop_clear      ; 64 loop
+
+                rts
+
+; =============================================================================
+; Copy screen
+; a0 - Source adr
+; a1 - Dest adr
+; =============================================================================
+CopyScreen:
+                ;add.l	#32*1024,a0			; End of screen
+                ;add.l	#32*1024,a1			; End of screen
+                moveq   #64-1,d7
+.loop_clear:
+			rept 16
+                movem.l (a0)+,d0-d6/a2      ; 32 bytes * 16
+                movem.l d0-d6/a2,(a1)	      ; 32 bytes * 16
+				lea		32(a1),a1
 			endr
                 dbf     d7,.loop_clear      ; 64 loop
 
