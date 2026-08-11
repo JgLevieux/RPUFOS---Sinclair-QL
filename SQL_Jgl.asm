@@ -2,53 +2,26 @@
 	include "macros.asm"
 	even
 ; =============================================================================
-BARE_METAL			equ		1
-
-;TIMER_MODE			equ		1
-
-	ifd BARE_METAL
 DOUBLE_BUFFERING	equ		1
-	else
-;CLEAR_SCREEN_FRAME	equ		1
-	endif
-;CLEAR_SCREEN_FRAME	equ		1
-
-	ifd TIMER_MODE
-;CLEAR_SCREEN_COLOR	equ		$AAFFAAFF
-CLEAR_SCREEN_COLOR	equ		$00550055
-	else
-CLEAR_SCREEN_COLOR	equ		0
-	endif
 
 ;$18063	Screen Mode S---C-O- On Colordepth Screenpage
 ScreenMode01	equ		%00001000
 ScreenMode02	equ		%10001000
 
 ; =============================================================================
-
 Start:
-			; Remove QDOS, mainly for double buffering as second screen adress contain QDOS data (and  code ?)
-			ifd BARE_METAL
-                trap    #0              ; Call QDOS for Superviseur mode
-                ori.w   #$0700,sr       ; All hardware interrupt off.
-				
+				DBGENABLE
+			; Remove QDOS, mainly for double buffering as second screen adress contain QDOS data
+                trap    #0              			; Call QDOS for Superviseur mode
+                ori.w   #$0700,sr       			; All hardware interrupt off.
 			; Set my own stack
 				lea		TopOfStack(pc),a0
 				move.l	a0,sp
-			endif
-
-				DBGENABLE
-				;DBGBREAK
-
-				lea     NbLoop(pc),a0
-                move.l  #0,(a0)
 
 			; Setup double buffering & first clear
 				move.b	#ScreenMode01,$18063
-			ifd DOUBLE_BUFFERING				
 				move.l	#$28000,a0
 				bsr     ClearScreen
-			endif
 			
 				move.l	#$20000,a0
 				bsr     ClearScreen
@@ -56,19 +29,39 @@ Start:
 				lea		ScreenBase(pc),a0
 				move.l	#$20000,(a0)
 
+			; Setup VBL interrupt (thanks to QLSys 0.01 by spkr/smfx for the sample code)
+				move.w	#$2700,sr					; Supervisor mode & no interrupt
+				lea		VBLRouterList(pc),a0
+				lea		VBLInterrupt(pc),a1
+				move.l	a1,4(a0)					; Function to be called each frame.
+				move.l	a0,$2803c					; write VBLANK pointer to JSROM location
+				move.w	#$2100,sr					; Enable interrupts for Vbl, keyboard & sound (as well as microdrive & rs232)
+				; TODO - Specific code for minerva support
+
+			; Frame counter (real display)
+				lea     NbLoop(pc),a0
+                move.l  #0,(a0)
+				lea     NbVbl(pc),a0
+                move.l  #0,(a0)
 				;bsr		StartOutro
 				;bsr		StartCharaFalling
+
+				lea		Music_OdeALaJoie(pc),a0
+				bsr		StartMusic
 				
 MainLoop:
 			; WaitVBlank
 				bsr		WaitVBlank
-				
+				;bra		MainLoop
+
 			ifd TIMER_MODE
 				move.b	#ScreenMode01,$18063			; Display screen 1
 			endif
 
 				bsr		SwapBuffer
 
+				bsr		DrawVblTimer
+				
 				;bsr 	ReadKeyboard
 
 				btst	#Keyboard01_ESC,1(a1)
@@ -84,13 +77,9 @@ MainLoop:
 				;bsr			SoundTest
 				
 .nobreakpoint:
-
-				lea     NbLoop(pc),a0
-				add.l	#1,(a0)
+			; Loop counter
+				lea     NbVbl(pc),a0
 				move.l	(a0),d6
-				;lea		ScreenBase(pc),a0
-				;move.l	(a0),a0
-				;bsr     ClearScreen
 
 				lea		DemoStatus(pc),a0
 				move.l	(a0),d0
@@ -135,14 +124,15 @@ MainLoop:
 
 .EndSwitch:				
 
-				bsr		DrawVblTimer
-
 			ifd TIMER_MODE
 				DisplayOffForProfiling
 			endif
+			
 				bra		MainLoop
 
                 rts
+
+					even
 
 ;=============================================================================
 ; Demo var
@@ -163,7 +153,7 @@ ReplaceYOffset:		dc.l	16
 PlasmaEffect:
 				lea		ScreenBase(pc),a4
 				move.l	(a4),a4
-				add.l	#32,a4
+				add.l	#32+128,a4
 				
 				lea		SinTable512(pc),a3
 				lea		ColorLUT(pc),a2			; Color in table
@@ -178,6 +168,9 @@ PlasmaEffect:
 				;DBGBREAK
 				add.w	#256,a4
 .NoDecal:				
+				lea     NbLoop(pc),a0
+				move.l	(a0),d7
+				;and.l	#63,d7
 				moveq	#60,d7
 .LoopY:
 				; Wave Y
@@ -219,7 +212,7 @@ PlasmaEffect:
 				lea		128*4-64(a4),a4
 				dbra	d7,.LoopY
 
-				lea		NbLoop(pc),a1
+ 				lea		NbVbl(pc),a1
 				cmp.l	#50*5,(a1)
 				bmi.s	.NoNextPart
 				bsr		StartOutro
@@ -325,6 +318,8 @@ StartOutro:
 				lea		DemoStatus(pc),a0
 				move.l	#STATUS_DEMO_OUTRO_01,(a0)
 
+				lea     NbVbl(pc),a1
+				move.l	#0,(a1)
 				lea     NbLoop(pc),a1
 				move.l	#0,(a1)
 
@@ -332,15 +327,15 @@ StartOutro:
 				lea		$20000,a1
 				bsr		zx0_decompress
 
-				lea		Outro01(pc),a0
-				lea		$28000,a1
-				bsr		zx0_decompress
+				lea		$20000+128,a0
+				lea		$28000+128,a1
+				bsr		CopyScreenMinusOneLine
 
 				lea		Outro02(pc),a0
 				lea		BufferData(pc),a1
 				bsr		zx0_decompress
 				rts
-				
+
 ;=============================================================================
 ; Start Chara falling phase
 ;=============================================================================
@@ -348,6 +343,8 @@ StartCharaFalling:
 				lea		DemoStatus(pc),a0
 				move.l	#STATUS_DEMO_OUTRO_FALLING,(a0)
 
+				lea     NbVbl(pc),a1
+				move.l	#0,(a1)
 				lea     NbLoop(pc),a1
 				move.l	#0,(a1)
 
@@ -367,8 +364,9 @@ StartCharaFalling:
 				bsr		CopyScreen
 
 				lea		BufferData(pc),a0
-				lea		$28000,a1
-				bsr		CopyScreen
+				add.l	#128,a0
+				lea		$28000+128,a1
+				bsr		CopyScreenMinusOneLine
 
 				rts
 				
@@ -388,7 +386,7 @@ SPEED_CHARA		equ 128
 	macro DrawRainbow
 				move.l	#\5,d0
 				move.l	\2(a5),d1
-				cmp.l	#255,\2(a5)
+				cmp.l	#255*2,\2(a5)
 				bmi.s	.NoSub\@
 				sub.l	#SPEED_RAINBOW,\2(a5)
 .NoSub\@:
@@ -543,7 +541,7 @@ TableLinePos:
 ; Replace outro 01 with outro 02 overtime
 ;=============================================================================
 ReplaceOutroImage:
-				lea     NbLoop(pc),a4
+				lea     NbVbl(pc),a4
 				move.l	(a4),d7
 				
 				cmp.l	#50,d7
@@ -623,7 +621,7 @@ OutroAroundEffect:
 				move.l	(a6),a6
 				add.l	#128*(256-8),a6
 
-				lea     NbLoop(pc),a4
+				lea     NbVbl(pc),a4
 				move.l	(a4),d7
 				
 				and.l	#7,d7
@@ -747,6 +745,7 @@ OutroAroundEffect:
 			endr
 				dbra	d7,.L3u
 
+				rts
 				move.w	(a5)+,d7
 				sub.w	#1,d7
 .L4u:
@@ -1009,61 +1008,132 @@ DisplaySprite8x8:
 
 				rts
 
-; =============================================================================
-; Wait Vertical Blank
-; Input : -
-; Output : -
-; Destroy : d0
-; =============================================================================
+;=============================================================================
+	even
+VblTimeUsed:				dc.l	0					; How many time we wait during the last VBL
+VblNbFrameLastLoop:			dc.l	0					; How many VBL int furing the previous process
+VblNbFrameLastLoopSaved:	dc.l	0					; Save for debug display
+
+NbLoop:						dc.l	0					; Num of the current frame displayed
+NbVbl:						dc.l	0					; Nb Vbl (50 FPS) triggered (for real time counter)
+
+VblLastLoop:				dc.l	0					; Num of the last frame that triggered a Vbl for the main process
+VblInt:						dc.l	0					; 0 if we must wait, 1 if vbl int occurs
+
+VBLRouterList:				dc.l	0,VBLInterrupt		; !!! Must be relocated !!!
+	even
+
+;=============================================================================
+VBLInterrupt:
+				movem.l d0-a6,-(sp)
+
+				bsr		PlayMusic
+				
+			; Clean unused stuff around function ptr for clearer screen
+				lea		$28000,a0
+				moveq	#0,d0
+				move.l	d0,$2C(a0)
+				move.l	d0,$2C+4(a0)
+				
+			; Vbl counter
+				lea		VblNbFrameLastLoop(pc),a0
+				add.l	#1,(a0)
+				lea		NbVbl(pc),a0
+				add.l	#1,(a0)
+
+			; Check if we have finished the process of the current display
+				lea     NbLoop(pc),a0
+				move.l	(a0),d0							; Current num frame
+				lea		VblLastLoop(pc),a1
+				move.l	(a1),d1							; Last loop num frame
+				cmp.l	d0,d1
+				beq.s	.DoNotTriggerVblForMainLoop		; While it's the same we do not trigger VBL for the main loop
+				
+				move.l	(a0),(a1)						; We save last num frame
+
+				lea		VblInt(pc),a0
+				move.l	#1,(a0)							; Trigger the vbl for main process
+.DoNotTriggerVblForMainLoop:
+
+				movem.l	(sp)+,d0-a6
+				rts
+				
+;=============================================================================
 WaitVBlank:
+				lea     NbLoop(pc),a0
+				add.l	#1,(a0)						; Increase current frame, so we can have a vbl int triggered
+
 				moveq	#0,d1
 				moveq	#1,d2
-				move.b	#1<<3,$18021   ; ack frame interrupt
+				
+				lea		VblInt(pc),a0
 .wait:
 				add.l	d2,d1
-				btst    #3,$18021		; ...and wait for the next VBL
-				beq.s   .wait                   ; (bit 3 only: bits 7..5 always move)
+				tst.l	(a0)
+				beq.s	.wait
 
-				lea		VBlankTimer(pc),a0
+				move.l	#0,(a0)							; Reset Vbl int for main loop.
+
+				lea		VblTimeUsed(pc),a0
 				move.l	d1,(a0)
+				
+				lea		VblNbFrameLastLoop(pc),a0
+				lea		VblNbFrameLastLoopSaved(pc),a1
+				move.l	(a0),(a1)
+				move.l	#0,(a0)
+
 				rts
 
+;=============================================================================
 DrawVblTimer:
-				lea		VBlankTimer(pc),a0
-				move.l	(a0),d0				; max 1260 mesured with debugger
-				lsr.l	#5,d0
+;	DBGBREAK
+				lea		VblTimeUsed(pc),a0
+				move.l	(a0),d1				; max 1520 mesured with debugger
+				move.l	#1520,d0
+				sub.l	d1,d0
+				bgt		.SupZero
+				move.l	#0,d0
+.SupZero:
+				lsr.l	#5,d0				; 1520/32 = 48
 
-				cmp.l	#1,d0
-				bge.s	.check_sup
-				move.l	#1,d0
-				bra.s	.finborne
-
-.check_sup:
-				cmp.l	#40,d0
+				cmp.l	#48,d0
 				ble.s	.finborne
-				move.l	#40,d0
+				move.l	#48,d0
 .finborne:
 
+				move.w	#$AAFF,d7			; Time used (white) - one frame
+				move.w	#$0055,d6			; Borne (blue)
+				move.w	#$AA00,d5			; Time Left (green)
+				
+				lea		VblNbFrameLastLoopSaved(pc),a1
+				cmp.l	#1,(a1)
+				beq.s	.Draw
+				move.w	#$00FF,d7			; Time used (magenta) - two frames
+				cmp.l	#2,(a1)
+				beq.s	.Draw
+				move.w	#$00AA,d7			; Time used (rouge) - three frames or more
+				
+.Draw:
 				lea		ScreenBase(pc),a0
 				move.l	(a0),a0
-				add.l	#128*255,a0
+				add.l	#64,a0				; middle of first line of screen (after interrupt vector)
 
-				move.l	#41,d1
-				sub.l	d0,d1
+				move.w	d6,(a0)+ ; First pixel to see the start
+				move.w	d6,(a0)+ ; First pixel to see the start
+
+				move.l	#48,d1
+				lsr.l	#1,d0				; Words.
+				lsr.l	#1,d1				; Words.
+.DrawLoopGet:
 				sub.l	#1,d1
-				sub.l	#1,d0
-.DrawLoop:
-				move.w	#$AAFF,(a0)+
-				dbra	d1,.DrawLoop
+				move.w	d7,(a0)+
+				dbra	d0,.DrawLoopGet
+.DrawLoopFree:
+				move.w	d5,(a0)+
+				dbra	d1,.DrawLoopFree
 
-.CleanLoop:
-				clr.w	(a0)+
-				dbra	d0,.CleanLoop
-
-				move.w	#$0055,(a0)+ ; Last pixel to see the end
-				move.w	#$0055,(a0)+ ; Last pixel to see the end
-				move.w	#$0055,(a0)+ ; Last pixel to see the end
-				move.w	#$0055,(a0)+ ; Last pixel to see the end
+				move.w	d6,(a0)+ ; Last pixel to see the end
+				move.w	d6,(a0)+ ; Last pixel to see the end
 				rts
 
 
@@ -1097,19 +1167,34 @@ ClearScreen:
 ; a1 - Dest adr
 ; =============================================================================
 CopyScreen:
-                ;add.l	#32*1024,a0			; End of screen
-                ;add.l	#32*1024,a1			; End of screen
                 moveq   #64-1,d7
 .loop_clear:
 			rept 16
-                movem.l (a0)+,d0-d6/a2      ; 32 bytes * 16
-                movem.l d0-d6/a2,(a1)	      ; 32 bytes * 16
+                movem.l (a0)+,d0-d6/a2      	; 32 bytes * 16
+                movem.l d0-d6/a2,(a1)	      	; 32 bytes * 16
 				lea		32(a1),a1
 			endr
-                dbf     d7,.loop_clear      ; 64 loop
+                dbf     d7,.loop_clear      	; 64 loop
 
                 rts
-				
+
+CopyScreenMinusOneLine:
+                moveq   #63-1,d7
+.loop_clear:
+			rept 16
+                movem.l (a0)+,d0-d6/a2      	; 32 bytes * 16
+                movem.l d0-d6/a2,(a1)	      	; 32 bytes * 16
+				lea		32(a1),a1
+			endr
+                dbf     d7,.loop_clear      	; 64 loop
+
+			rept 12
+                movem.l (a0)+,d0-d6/a2      	; 32 bytes * 16
+                movem.l d0-d6/a2,(a1)	      	; 32 bytes * 16
+				lea		32(a1),a1
+			endr
+                rts
+			
 ; =============================================================================
 ;  ZONE DE DONNÉES / VARIABLES
 ; =============================================================================
@@ -1117,11 +1202,7 @@ CopyScreen:
 ScreenBase:					dc.l	$20000
 ScreenBaseFront:			dc.l	$28000
 	even
-VBlankTimer:				dc.l	0
-	even
 BufferNum:					dc.w	0
-	even
-NbLoop:						dc.l	0
 	even
 							dcb.b	2048,0
 TopOfStack:
