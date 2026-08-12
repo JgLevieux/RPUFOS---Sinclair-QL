@@ -3067,28 +3067,26 @@ Text_Bottom01:			dc.b	"          QLIX FOR QL",0
 Text_Bottom02:			dc.b	" BY JGL FOR RPUFOS GAMEJAM 2026",0
 	even
 
-SpritePlayer_01:	incbin		"Data\QLixPlayer01.bin"
+SpritePlayer_01:	incbin		"Data\QLix\QLixPlayer01.bin"
 	even
-SpritePlayer_02:	incbin		"Data\QLixPlayer02.bin"
+SpritePlayer_02:	incbin		"Data\QLix\QLixPlayer02.bin"
 	even
-SpritePlayer_03:	incbin		"Data\QLixPlayer03.bin"
+SpritePlayer_03:	incbin		"Data\QLix\QLixPlayer03.bin"
 	even
-SpritePlayer_04:	incbin		"Data\QLixPlayer04.bin"
+SpritePlayer_04:	incbin		"Data\QLix\QLixPlayer04.bin"
 	even
 
-SpriteEnnemy_01:	incbin		"Data\QLixEnnemy01.bin"
+SpriteEnnemy_01:	incbin		"Data\QLix\QLixEnnemy01.bin"
 	even
-SpriteEnnemy_02:	incbin		"Data\QLixEnnemy02.bin"
+SpriteEnnemy_02:	incbin		"Data\QLix\QLixEnnemy02.bin"
 	even
-SpriteEnnemy_03:	incbin		"Data\QLixEnnemy03.bin"
+SpriteEnnemy_03:	incbin		"Data\QLix\QLixEnnemy03.bin"
 	even
-SpriteEnnemy_04:	incbin		"Data\QLixEnnemy04.bin"
+SpriteEnnemy_04:	incbin		"Data\QLix\QLixEnnemy04.bin"
 	even
-SpriteHeart:	incbin			"Data\QLixHeart.bin"
+SpriteHeart:	incbin			"Data\QLix\QLixHeart.bin"
 	even
 Font:			incbin 		"Data\Font8x8.bin"
-	even
-LogoRetroProg:			incbin 		"Data\logo.bin.zx0"
 	even
 
 PlayerSave:		dcb.b	(2*4+8*6+1+7)*2		; (2 coord.l (x,y) + sprite8x8 shifted (8 lines * 6 bytes) + 1 (is valid, if not cannot be back on screen) + 7 (padding for 64 bytes size)) * 2 framebuffer
@@ -3103,9 +3101,9 @@ Ennemy02Save:	dcb.b	(2*4+8*6+1+7)*2		; (2 coord.l (x,y) + sprite8x8 shifted (8 l
 TopOfStack:
 	even
 
-QLixBackgroundCompressed:	incbin		"Data\QLixBackground.bin.zx0"
+QLixBackgroundCompressed:	incbin		"Data\QLix\QLixBackground.bin.zx0"
 	even
-QLixLogoCompressed:			incbin		"Data\QLixLogo.bin.zx0"
+QLixLogoCompressed:			incbin		"Data\QLix\QLixLogo.bin.zx0"
 	even
 
 QLixCollision:				dcb.b	(192/2)*(192/2),0

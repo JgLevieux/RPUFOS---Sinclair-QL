@@ -62,6 +62,11 @@ StartMusic:
 PlayMusic:
 		;DBGBREAK
 
+        lea     CurrentMusic(pc),a2
+		tst.l	(a2)
+		beq.s	.NoTune
+		move.l	(a2),a2
+
 		lea		FrameBeforeNextSound(pc),a0
 		move.l	(a0),d0
 		bne.s	.EndPlayTune
@@ -71,8 +76,6 @@ PlayMusic:
 		lsl.l	#2,d0
 		add.l	#1,(a1)
 
-        lea     CurrentMusic(pc),a2
-		move.l	(a2),a2
 		add.l	d0,a2
 
         move.w  0(a2),d1
@@ -107,6 +110,8 @@ PlayMusic:
 .EndOfTune:
 		move.l	#0,(a0)
 		move.l	#0,(a1)
+		rts
+.NoTune:
 		rts
 		
 		

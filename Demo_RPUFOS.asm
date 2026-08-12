@@ -1,3 +1,6 @@
+
+				bra		Start
+
 	even
 	include "macros.asm"
 	even
@@ -7,6 +10,22 @@ DOUBLE_BUFFERING	equ		1
 ;$18063	Screen Mode S---C-O- On Colordepth Screenpage
 ScreenMode01	equ		%00001000
 ScreenMode02	equ		%10001000
+
+;=============================================================================
+	even
+VblTimeUsed:				dc.l	0					; How many time we wait during the last VBL
+VblNbFrameLastLoop:			dc.l	0					; How many VBL int furing the previous process
+VblNbFrameLastLoopSaved:	dc.l	0					; Save for debug display
+
+NbLoop:						dc.l	0					; Num of the current frame displayed
+NbVbl:						dc.l	0					; Nb Vbl (50 FPS) triggered (for real time counter)
+
+VblLastLoop:				dc.l	0					; Num of the last frame that triggered a Vbl for the main process
+VblInt:						dc.l	0					; 0 if we must wait, 1 if vbl int occurs
+
+VBLRouterList:				dc.l	0,VBLInterrupt		; !!! Must be relocated !!!
+	even
+
 
 ; =============================================================================
 Start:
@@ -43,8 +62,9 @@ Start:
 				lea     NbVbl(pc),a0
                 move.l  #0,(a0)
 
-				;bsr		StartOutro
-				;bsr		StartCharaFalling
+				bsr		StartOutro
+				bsr		StartCharaFalling
+				;bsr		Start3D
 
 				lea		Music_OdeALaJoie(pc),a0
 				bsr		StartMusic
@@ -95,6 +115,9 @@ MainLoop:
 
 				cmp.l	#STATUS_DEMO_PLASMA_EFFECT,d0
 				beq.s   .CasePlasma
+
+				cmp.l	#STATUS_DEMO_OUTRO_3D,d0
+				beq.s   .CaseOutro3D
 				
 				bra.s   .EndSwitch
 
@@ -113,8 +136,13 @@ MainLoop:
 				bra.s   .EndSwitch
 				
 .CaseOutroFalling:
-				;bsr		OutroAroundEffect
 				bsr		CharaFalling
+				bsr		DrawRedLine
+				bra.s   .EndSwitch
+
+.CaseOutro3D:
+				bsr		DrawRedLine
+				bsr		Draw3D
 				bra.s   .EndSwitch
 				
 .CasePlasma:
@@ -141,6 +169,7 @@ STATUS_DEMO_OUTRO_01			equ			1
 STATUS_DEMO_OUTRO_02			equ			2
 STATUS_DEMO_OUTRO_FALLING		equ			3
 STATUS_DEMO_PLASMA_EFFECT  		equ			4
+STATUS_DEMO_OUTRO_3D			equ			5
 
 	even
 DemoStatus:			dc.l	STATUS_DEMO_PLASMA_EFFECT
@@ -213,7 +242,7 @@ PlasmaEffect:
 				dbra	d7,.LoopY
 
  				lea		NbVbl(pc),a1
-				cmp.l	#50*5,(a1)
+				cmp.l	#50*10,(a1)
 				bmi.s	.NoNextPart
 				bsr		StartOutro
 .NoNextPart:
@@ -369,6 +398,20 @@ StartCharaFalling:
 				bsr		CopyScreenMinusOneLine
 
 				rts
+
+;=============================================================================
+; Start 3D after chara falling phase
+;=============================================================================
+Start3D:
+				lea		DemoStatus(pc),a0
+				move.l	#STATUS_DEMO_OUTRO_3D,(a0)
+
+				lea		Projected(pc),a1
+				lea		Projected1(pc),a2
+				move.l	a2,(a1)
+                bsr     RotateAndProject
+
+				rts
 				
 ;=============================================================================
 ; Chara falling phase
@@ -428,6 +471,9 @@ SPEED_CHARA		equ 128
 				add.l	#SPEED_CHARA,(a5)
 				lsr.l	#8,d1
 				move.l	d1,d4
+
+				cmp.l	#255,d4
+				bge.s	.EndCharaFalling
 				
 				lea		BufferData(pc),a3
 				cmp.l	#0,(a4)
@@ -465,8 +511,18 @@ SPEED_CHARA		equ 128
 
 				dbra	d7,.LoopSpr32
 .EndLoopSpr:
+				rts
 
+.EndCharaFalling:
+				bsr		Start3D
+				rts
+				
+;=============================================================================
+; Draw red lines
+;=============================================================================
+DrawRedLine:
 ; Lines "scroll"
+				lea     NbLoop(pc),a4
 				lea		TableLinePos(pc),a5
 				lea		ScreenBase(pc),a2
 				move.l	(a2),a2
@@ -508,8 +564,9 @@ SPEED_CHARA		equ 128
 
 				add.l	#128/6,d3
 				dbra	d2,.LoopLine
-
+				
 				rts
+
 	even
 CharaPos:
 	dc.l	80*256
@@ -831,6 +888,8 @@ ImageDeformationTest:
 	even
 	include "PlotPixel.asm"
 	even
+	include "3D.asm"
+	even
 	;include "sinus.asm"
 ;=============================================================================
 	even
@@ -1007,21 +1066,6 @@ DisplaySprite8x8:
 				move.l  (a1)+,896(a0)
 
 				rts
-
-;=============================================================================
-	even
-VblTimeUsed:				dc.l	0					; How many time we wait during the last VBL
-VblNbFrameLastLoop:			dc.l	0					; How many VBL int furing the previous process
-VblNbFrameLastLoopSaved:	dc.l	0					; Save for debug display
-
-NbLoop:						dc.l	0					; Num of the current frame displayed
-NbVbl:						dc.l	0					; Nb Vbl (50 FPS) triggered (for real time counter)
-
-VblLastLoop:				dc.l	0					; Num of the last frame that triggered a Vbl for the main process
-VblInt:						dc.l	0					; 0 if we must wait, 1 if vbl int occurs
-
-VBLRouterList:				dc.l	0,VBLInterrupt		; !!! Must be relocated !!!
-	even
 
 ;=============================================================================
 VBLInterrupt:
