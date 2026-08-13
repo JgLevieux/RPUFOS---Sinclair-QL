@@ -1803,7 +1803,7 @@ MoveOneQLixCoord:
 
 .collidewallX:
 				neg.l	(a2)						; Change direction of X velocity
-				GetRandom d0
+				bsr		GetRandom
 				move.l	d0,d1
 				and.l	#QLIX_MOVE_MASK,d0
 				add.l	#QLIX_MOVE_ADD,d0
@@ -1841,7 +1841,7 @@ MoveOneQLixCoord:
 
 .collidewallY:
 				neg.l	4(a2)						; Change direction of Y velocity
-				GetRandom d0
+				bsr		GetRandom
 				move.l	d0,d1
 				and.l	#QLIX_MOVE_MASK,d0
 				add.l	#QLIX_MOVE_ADD,d0

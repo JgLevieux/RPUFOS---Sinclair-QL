@@ -144,7 +144,7 @@ RotateAndProject:
                 ext.l   d1
                 muls    d3,d1           ; Y' * ZoomLevel (Remplace lsl.l #7,d1)
                 divs    d2,d1
-                move.w  #128+48,d4         ; CenterY (Utilise d4 car d3 contient ZoomLevel)
+                move.w  #128+52,d4         ; CenterY (Utilise d4 car d3 contient ZoomLevel)
                 sub.w   d1,d4
                 move.w  d4,d1
                 bra.s   .store

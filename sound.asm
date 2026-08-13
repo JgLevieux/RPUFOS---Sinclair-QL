@@ -323,7 +323,3 @@ Music_OdeALaJoie_Fast:
     dc.w FIN, 0
 
 	even
-	
-	
-	
-	

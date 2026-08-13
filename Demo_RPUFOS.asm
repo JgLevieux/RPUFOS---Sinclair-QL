@@ -4,28 +4,25 @@
 	even
 	include "macros.asm"
 	even
+	include "controls.asm"
+	even
+	include "Music.asm"
+	even
+	include "random.asm"
+	even
+	include "unzx0_68000.asm"
+	even
+	include "PlotPixel.asm"
+	even
+	include "3D.asm"
+	even
+
 ; =============================================================================
 DOUBLE_BUFFERING	equ		1
 
 ;$18063	Screen Mode S---C-O- On Colordepth Screenpage
 ScreenMode01	equ		%00001000
 ScreenMode02	equ		%10001000
-
-;=============================================================================
-	even
-VblTimeUsed:				dc.l	0					; How many time we wait during the last VBL
-VblNbFrameLastLoop:			dc.l	0					; How many VBL int furing the previous process
-VblNbFrameLastLoopSaved:	dc.l	0					; Save for debug display
-
-NbLoop:						dc.l	0					; Num of the current frame displayed
-NbVbl:						dc.l	0					; Nb Vbl (50 FPS) triggered (for real time counter)
-
-VblLastLoop:				dc.l	0					; Num of the last frame that triggered a Vbl for the main process
-VblInt:						dc.l	0					; 0 if we must wait, 1 if vbl int occurs
-
-VBLRouterList:				dc.l	0,VBLInterrupt		; !!! Must be relocated !!!
-	even
-
 
 ; =============================================================================
 Start:
@@ -62,11 +59,12 @@ Start:
 				lea     NbVbl(pc),a0
                 move.l  #0,(a0)
 
-				bsr		StartOutro
-				bsr		StartCharaFalling
+				bsr		StartLogoEko
+				;bsr		StartOutro
+				;bsr		StartCharaFalling
 				;bsr		Start3D
 
-				lea		Music_OdeALaJoie(pc),a0
+				lea		Music_Demoscene(pc),a0
 				bsr		StartMusic
 				
 MainLoop:
@@ -74,13 +72,9 @@ MainLoop:
 				bsr		WaitVBlank
 				;bra		MainLoop
 
-			ifd TIMER_MODE
-				move.b	#ScreenMode01,$18063			; Display screen 1
-			endif
-
 				bsr		SwapBuffer
 
-				bsr		DrawVblTimer
+				;bsr		DrawVblTimer
 				
 				;bsr 	ReadKeyboard
 
@@ -103,6 +97,12 @@ MainLoop:
 
 				lea		DemoStatus(pc),a0
 				move.l	(a0),d0
+				
+				cmp.l	#STATUS_DEMO_LOGO_EKO,d0
+				beq.s	.CaseLogoEko
+				
+				cmp.l	#STATUS_DEMO_LOGO_RETRO_PROG,d0
+				beq.s	.CaseLogoRetroProg
 
 				cmp.l	#STATUS_DEMO_OUTRO_01,d0
 				beq.s   .CaseOutro01
@@ -119,6 +119,20 @@ MainLoop:
 				cmp.l	#STATUS_DEMO_OUTRO_3D,d0
 				beq.s   .CaseOutro3D
 				
+				bra.s   .EndSwitch
+
+.CaseLogoEko:
+				move.l	#200,d0
+				bsr		WaitNbVBlank
+				bsr		ProcessEraseScreen
+				bsr		StartLogoRetroProg
+				bra.s   .EndSwitch
+				
+.CaseLogoRetroProg:
+				move.l	#201,d0
+				bsr		WaitNbVBlank
+				bsr		ProcessEraseScreen
+				bsr		StartPlasma
 				bra.s   .EndSwitch
 
 .CaseOutro01:
@@ -152,10 +166,6 @@ MainLoop:
 
 .EndSwitch:				
 
-			ifd TIMER_MODE
-				DisplayOffForProfiling
-			endif
-			
 				bra		MainLoop
 
                 rts
@@ -170,14 +180,221 @@ STATUS_DEMO_OUTRO_02			equ			2
 STATUS_DEMO_OUTRO_FALLING		equ			3
 STATUS_DEMO_PLASMA_EFFECT  		equ			4
 STATUS_DEMO_OUTRO_3D			equ			5
+STATUS_DEMO_LOGO_EKO			equ			6
+STATUS_DEMO_LOGO_RETRO_PROG		equ			7
 
 	even
 DemoStatus:			dc.l	STATUS_DEMO_PLASMA_EFFECT
-ReplaceXOffset:		dc.l	16
-ReplaceYOffset:		dc.l	16
 
 ;=============================================================================
-; Start outro
+; Process Erase Screen
+;=============================================================================
+	macro SquareStepOne
+				move.l	d0,128*0(\1)
+.y set 1
+			rept 6
+				and.w	d1,128*.y(\1)
+				and.w	d4,128*.y+2(\1)
+.y set .y+1
+			endr
+				move.l	d0,128*7(\1)
+	endm
+
+	macro SquareStepTwo
+				move.l	d0,128*1(\1)
+.y set 2
+			rept 4
+				and.w	d2,128*.y(\1)
+				and.w	d3,128*.y+2(\1)
+.y set .y+1
+			endr
+				move.l	d0,128*6(\1)
+	endm
+
+	macro SquareStepThree
+				move.l	d0,128*2(\1)
+.y set 3
+			rept 2
+				and.w	d2,128*.y(\1)
+				and.w	d3,128*.y+2(\1)
+.y set .y+1
+			endr
+				move.l	d0,128*5(\1)
+	endm
+
+	macro SquareStepFour
+				move.l	d0,128*3(\1)
+				move.l	d0,128*4(\1)
+	endm
+;=============================================================================
+ProcessEraseScreen:
+
+; Create offset table
+				move.l	#128,d0
+				lea		BufferData(pc),a0
+				move.l	#32-1,d7
+.CreateOffsetTableY:
+				move.l	#32-1,d6
+.CreateOffsetTableX:
+
+				move.w	d0,(a0)+
+				add.l	#4,d0
+				dbra	d6,.CreateOffsetTableX
+
+				cmp.l	#31,d7					; First line ?
+				bne.s	.NotFirstLine
+				sub.l	#128,d0
+.NotFirstLine:
+				add.l	#128*7,d0
+				dbra	d7,.CreateOffsetTableY
+
+; Randomize square
+				lea		BufferData(pc),a0
+				move.l	#32*32-1,d7
+.RandomizeLoop:
+				bsr		GetRandom
+				and.w	#$3FF,d0
+				add.w	d0,d0
+				move.w	d0,d2
+				bsr		GetRandom
+				and.w	#$3FF,d0
+				add.w	d0,d0
+				move.w	(a0,d0.w),d3
+				move.w	(a0,d2.w),d4
+				move.w	d4,(a0,d0.w)
+				move.w	d3,(a0,d2.w)
+				dbra	d7,.RandomizeLoop
+				
+; Erase 32 square at a time
+				lea		$20000,a2
+				lea		$28000,a3
+
+				moveq	#0,d0
+				move.w	#$3F3F,d1
+				move.w	#$CFCF,d2
+				move.w	#$F3F3,d3
+				move.w	#$FCFC,d4
+
+ERASE_NB_SQUARE_SAME_TIME	equ		512
+
+				lea		BufferData(pc),a0
+				move.l	#(1024/ERASE_NB_SQUARE_SAME_TIME)-1,d7		; Nb lines (square of 8)
+.LoopLine:
+				move.l	#ERASE_NB_SQUARE_SAME_TIME-1,d6
+.LoopStepOne:
+				move.l	a2,a4
+				move.l	a3,a5
+				add.w	(a0),a4
+				add.w	(a0)+,a5
+				SquareStepOne <a4>
+				SquareStepOne <a5>
+				dbra	d6,.LoopStepOne
+
+				sub.l	#ERASE_NB_SQUARE_SAME_TIME*2,a0
+				move.l	#ERASE_NB_SQUARE_SAME_TIME-1,d6
+.LoopStepTwo:
+				move.l	a2,a4
+				move.l	a3,a5
+				add.w	(a0),a4
+				add.w	(a0)+,a5
+				SquareStepTwo <a4>
+				SquareStepTwo <a5>
+				dbra	d6,.LoopStepTwo
+
+				sub.l	#ERASE_NB_SQUARE_SAME_TIME*2,a0
+				move.l	#ERASE_NB_SQUARE_SAME_TIME-1,d6
+.LoopStepThree:
+				move.l	a2,a4
+				move.l	a3,a5
+				add.w	(a0),a4
+				add.w	(a0)+,a5
+				SquareStepThree <a4>
+				SquareStepThree <a5>
+				dbra	d6,.LoopStepThree
+
+				sub.l	#ERASE_NB_SQUARE_SAME_TIME*2,a0
+				move.l	#ERASE_NB_SQUARE_SAME_TIME-1,d6
+.LoopStepFour:
+				move.l	a2,a4
+				move.l	a3,a5
+				add.w	(a0),a4
+				add.w	(a0)+,a5
+				SquareStepFour <a4>
+				SquareStepFour <a5>
+				dbra	d6,.LoopStepFour
+
+				;move.l	#5,d0
+				;bsr		WaitNbVBlank
+				;moveq	#0,d0
+
+				dbra	d7,.LoopLine
+
+				rts
+				
+;=============================================================================
+; Start Logo Eko
+;=============================================================================
+StartLogoEko:
+				lea		$20000,a0
+				move.l	#$AAFFAAFF,d0
+				bsr		ClearScreenMinusOneLine
+
+				lea		$28000,a0
+				move.l	#$AAFFAAFF,d0
+				bsr		ClearScreenMinusOneLine
+
+				lea		LogoEko(pc),a0
+				lea		$20000+128*(128-86/2),a1
+				bsr		zx0_decompress
+
+				lea		LogoEko(pc),a0
+				lea		$28000+128*(128-86/2),a1
+				bsr		zx0_decompress
+
+				lea		DemoStatus(pc),a0
+				move.l	#STATUS_DEMO_LOGO_EKO,(a0)
+				
+				rts
+				
+;=============================================================================
+; Start Logo Retro prog
+;=============================================================================
+StartLogoRetroProg:
+				lea		$20000,a0
+				move.l	#$AAFFAAFF,d0
+				;bsr		ClearScreenMinusOneLine
+
+				lea		$28000,a0
+				move.l	#$AAFFAAFF,d0
+				;bsr		ClearScreenMinusOneLine
+
+				lea		LogoRetroProg(pc),a0
+				lea		$20000+128*(128-214/2),a1
+				bsr		zx0_decompress
+
+				lea		LogoRetroProg(pc),a0
+				lea		$28000+128*(128-214/2),a1
+				bsr		zx0_decompress
+
+				lea		DemoStatus(pc),a0
+				move.l	#STATUS_DEMO_LOGO_RETRO_PROG,(a0)
+				
+				rts
+
+;=============================================================================
+; Start Plasma
+;=============================================================================
+StartPlasma:
+				lea		DemoStatus(pc),a0
+				move.l	#STATUS_DEMO_PLASMA_EFFECT,(a0)
+				lea     NbLoop(pc),a0
+                move.l  #0,(a0)
+				lea     NbVbl(pc),a0
+                move.l  #0,(a0)
+				rts
+
+;=============================================================================
+; Plasma
 ;=============================================================================
 PlasmaEffect:
 				lea		ScreenBase(pc),a4
@@ -242,7 +459,7 @@ PlasmaEffect:
 				dbra	d7,.LoopY
 
  				lea		NbVbl(pc),a1
-				cmp.l	#50*10,(a1)
+				cmp.l	#50*15,(a1)
 				bmi.s	.NoNextPart
 				bsr		StartOutro
 .NoNextPart:
@@ -344,6 +561,8 @@ ColorLUT:
 ; Start outro
 ;=============================================================================
 StartOutro:
+				bsr		ProcessEraseScreen
+
 				lea		DemoStatus(pc),a0
 				move.l	#STATUS_DEMO_OUTRO_01,(a0)
 
@@ -593,7 +812,11 @@ TableLinePos:
     dc.w  79,  82,  84,  87,  90,  93,  96,  99
     dc.w 102, 106, 109, 113, 116, 120, 124, 126
 	even
-				
+
+
+ReplaceXOffset:		dc.l	16
+ReplaceYOffset:		dc.l	16
+	
 ;=============================================================================
 ; Replace outro 01 with outro 02 overtime
 ;=============================================================================
@@ -876,23 +1099,6 @@ ImageDeformationTest:
 
 				rts
 
-;=============================================================================
-	even
-	include "controls.asm"
-	even
-	include "sound.asm"
-	even
-	include "random.asm"
-	even
-	include "unzx0_68000.asm"
-	even
-	include "PlotPixel.asm"
-	even
-	include "3D.asm"
-	even
-	;include "sinus.asm"
-;=============================================================================
-	even
 
 ;=============================================================================
 ; Swap buffer for double buffering
@@ -1068,6 +1274,21 @@ DisplaySprite8x8:
 				rts
 
 ;=============================================================================
+	even
+VblTimeUsed:				dc.l	0					; How many time we wait during the last VBL
+VblNbFrameLastLoop:			dc.l	0					; How many VBL int furing the previous process
+VblNbFrameLastLoopSaved:	dc.l	0					; Save for debug display
+
+NbLoop:						dc.l	0					; Num of the current frame displayed
+NbVbl:						dc.l	0					; Nb Vbl (50 FPS) triggered (for real time counter)
+
+VblLastLoop:				dc.l	0					; Num of the last frame that triggered a Vbl for the main process
+VblInt:						dc.l	0					; 0 if we must wait, 1 if vbl int occurs
+
+VBLRouterList:				dc.l	0,VBLInterrupt		; !!! Must be relocated !!!
+	even
+
+;=============================================================================
 VBLInterrupt:
 				movem.l d0-a6,-(sp)
 
@@ -1101,7 +1322,21 @@ VBLInterrupt:
 
 				movem.l	(sp)+,d0-a6
 				rts
-				
+
+;=============================================================================
+ ; d0.l = nb vbl (50 = 1 second)
+WaitNbVBlank:
+				move.l a0,-(sp)
+
+				lea		NbVbl(pc),a0
+				add.l	(a0),d0
+.LoopWait:
+				cmp.l	(a0),d0
+				bge.s	.LoopWait
+
+				move.l	(sp)+,a0
+				rts
+
 ;=============================================================================
 WaitVBlank:
 				lea     NbLoop(pc),a0
@@ -1203,6 +1438,33 @@ ClearScreen:
 			endr
                 dbf     d7,.loop_clear      ; 64 loop
 
+                rts
+
+; =============================================================================
+; Clear screen minus one line
+; a0 - Screen adr
+; d0 - Color
+; =============================================================================
+ClearScreenMinusOneLine:
+                move.l  d0,d1
+                move.l  d0,d2
+                move.l  d0,d3
+                move.l  d0,d4
+                move.l  d0,d5
+                move.l  d0,d6
+				move.l  d0,a1
+
+                add.l	#32*1024,a0			; End of screen
+                moveq   #63-1,d7
+.loop_clear:
+			rept 16
+                movem.l d0-d6/a1,-(a0)      ; 32 bytes * 16
+			endr
+                dbf     d7,.loop_clear      ; 64 loop
+
+			rept 12
+                movem.l d0-d6/a1,-(a0)      ; 32 bytes * 16
+			endr
                 rts
 
 ; =============================================================================
@@ -1341,13 +1603,15 @@ TableSpeSin:
 	
 Font:						incbin 		"Data\Font8x8.bin"
 	even
-;LogoRetroProg:				incbin 		"Data\logo.bin.zx0"
+LogoRetroProg:				incbin 		"Data\Demo\LogoRPUFOS.bin.zx0"
 	even
-Outro01:					incbin 		"Data\Outro_01.bin.zx0"
+LogoEko:					incbin 		"Data\Demo\LogoEko.bin.zx0"
 	even
-Outro02:					incbin 		"Data\Outro_02.bin.zx0"
+Outro01:					incbin 		"Data\Demo\Outro_01.bin.zx0"
 	even
-OlipixChara:				incbin 		"Data\Olipix_Chara.bin"
+Outro02:					incbin 		"Data\Demo\Outro_02.bin.zx0"
+	even
+OlipixChara:				incbin 		"Data\Demo\Olipix_Chara.bin"
 	even
 Demo01:						;incbin 		"Data\Demo01.bin"
 	even
