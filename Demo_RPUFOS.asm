@@ -16,9 +16,8 @@
 	even
 	include "3D.asm"
 	even
-
+	
 ; =============================================================================
-DOUBLE_BUFFERING	equ		1
 
 ;$18063	Screen Mode S---C-O- On Colordepth Screenpage
 ScreenMode01	equ		%00001000
@@ -33,7 +32,7 @@ Start:
 			; Set my own stack
 				lea		TopOfStack(pc),a0
 				move.l	a0,sp
-
+				
 			; Setup double buffering & first clear
 				move.b	#ScreenMode01,$18063
 				move.l	#$28000,a0
@@ -59,14 +58,16 @@ Start:
 				lea     NbVbl(pc),a0
                 move.l  #0,(a0)
 
+				lea		Music_Demoscene(pc),a0
+				bsr		StartMusic
+
+				;bsr		StartBobShading
 				bsr		StartLogoEko
+				;bsr			StartPlasma
 				;bsr		StartOutro
 				;bsr		StartCharaFalling
 				;bsr		Start3D
-
-				lea		Music_Demoscene(pc),a0
-				bsr		StartMusic
-				
+			
 MainLoop:
 			; WaitVBlank
 				bsr		WaitVBlank
@@ -74,7 +75,7 @@ MainLoop:
 
 				bsr		SwapBuffer
 
-				;bsr		DrawVblTimer
+				bsr		DrawVblTimer
 				
 				;bsr 	ReadKeyboard
 
@@ -104,6 +105,12 @@ MainLoop:
 				cmp.l	#STATUS_DEMO_LOGO_RETRO_PROG,d0
 				beq.s	.CaseLogoRetroProg
 
+				cmp.l	#STATUS_DEMO_PLASMA_EFFECT,d0
+				beq.s   .CasePlasma
+
+				cmp.l	#STATUS_DEMO_BOB_SHADING,d0
+				beq.s   .CaseBobShading
+
 				cmp.l	#STATUS_DEMO_OUTRO_01,d0
 				beq.s   .CaseOutro01
 
@@ -113,19 +120,13 @@ MainLoop:
 				cmp.l	#STATUS_DEMO_OUTRO_FALLING,d0
 				beq.s   .CaseOutroFalling
 
-				cmp.l	#STATUS_DEMO_PLASMA_EFFECT,d0
-				beq.s   .CasePlasma
-
 				cmp.l	#STATUS_DEMO_OUTRO_3D,d0
 				beq.s   .CaseOutro3D
 				
 				bra.s   .EndSwitch
 
 .CaseLogoEko:
-				move.l	#200,d0
-				bsr		WaitNbVBlank
-				bsr		ProcessEraseScreen
-				bsr		StartLogoRetroProg
+				bsr		ProcessLogoEko
 				bra.s   .EndSwitch
 				
 .CaseLogoRetroProg:
@@ -133,6 +134,14 @@ MainLoop:
 				bsr		WaitNbVBlank
 				bsr		ProcessEraseScreen
 				bsr		StartPlasma
+				bra.s   .EndSwitch
+
+.CasePlasma:
+				bsr		PlasmaEffect
+				bra.s   .EndSwitch
+				
+.CaseBobShading:
+				bsr		ProcessBobShading
 				bra.s   .EndSwitch
 
 .CaseOutro01:
@@ -159,11 +168,7 @@ MainLoop:
 				bsr		Draw3D
 				bra.s   .EndSwitch
 				
-.CasePlasma:
-				bsr		PlasmaEffect
-				bra.s   .EndSwitch
 				nop
-
 .EndSwitch:				
 
 				bra		MainLoop
@@ -182,6 +187,7 @@ STATUS_DEMO_PLASMA_EFFECT  		equ			4
 STATUS_DEMO_OUTRO_3D			equ			5
 STATUS_DEMO_LOGO_EKO			equ			6
 STATUS_DEMO_LOGO_RETRO_PROG		equ			7
+STATUS_DEMO_BOB_SHADING			equ			8
 
 	even
 DemoStatus:			dc.l	STATUS_DEMO_PLASMA_EFFECT
@@ -353,9 +359,197 @@ StartLogoEko:
 
 				lea		DemoStatus(pc),a0
 				move.l	#STATUS_DEMO_LOGO_EKO,(a0)
+
+
+				move.l	#200,d0
+				bsr		WaitNbVBlank
+
+				bsr		ProcessEraseScreen
+
+				lea     NbLoop(pc),a0
+                move.l  #0,(a0)
+				lea     NbVbl(pc),a0
+                move.l  #0,(a0)
+
+				lea		Text_Presents(pc),a0
+				lea		CurrentTextAnim(pc),a1
+				move.l	a0,(a1)
+
+				bsr		StartNextTextAnimation
 				
 				rts
+
+;=============================================================================
+; Process Logo Eko
+;=============================================================================
+ProcessLogoEko:
+				bsr		DisplayTextAnim
+				rts
 				
+							even
+Text_Presents:				dc.l		128-11*8/2, 50
+							dc.b		"EKO IS BACK",0
+							even
+Text_ADemo:					dc.l		128-11*8/2, 50+8*2
+							dc.b		"WITH A DEMO",0
+							even
+Text_MadeFor:				dc.l		128-12*8/2, 50+8*4
+							dc.b		"MADE FOR THE",0
+							even
+Text_Retro01:				dc.l		128-24*8/2, 50+8*6
+							dc.b		"RETRO PROGRAMMERS UNITED",0
+							even
+Text_Retro02:				dc.l		128-19*8/2, 50+8*8
+							dc.b		"FOR OBSCURE SYSTEMS",0
+							even
+Text_GameJam:				dc.l		128-20*8/2, 50+8*10
+							dc.b		"PROGRAMMING JAM 2026",0
+							even
+Text_QL:					dc.l		128-15*8/2, 50+8*12
+							dc.b		"ON SINCLAIR QL",0 ; Last text to be display
+							even
+							dc.l		-1
+							even
+
+	RSRESET
+STextAnim_TextAdr:			RS.L 1		; Text Adr
+STextAnim_FinalX:			RS.L 1		; Final Y pos
+STextAnim_FinalY:			RS.L 1		; Final Y pos
+STextAnim_CurrentY:			RS.L 1		; Current Y pos
+STextAnim_SinOffset:		RS.L 1		; Y speed - 24:8 format
+STextAnim_SIZEOF:     		RS.B 0
+
+TextAnimation:				dcb.b    STextAnim_SIZEOF,0
+	even
+CurrentTextAnim:			dc.l	0
+
+;=============================================================================
+; Start Next text animation
+; a1 = Coord & Text Adr
+;=============================================================================
+StartNextTextAnimation:
+				lea		CurrentTextAnim(pc),a2
+				move.l	(a2),a0
+				cmp.l	#-1,(a0)
+				bne.s	.SetNext
+
+				move.l	#100,d0
+				bsr		WaitNbVBlank
+
+				bsr		StartLogoRetroProg
+				rts
+.SetNext:
+
+				lea		TextAnimation(pc),a1
+				move.l	(a0)+,d0				; x final
+				move.l	(a0)+,d1				; y final
+				
+				move.l	d0,STextAnim_FinalX(a1)
+				move.l	d1,STextAnim_FinalY(a1)
+				move.l	#255+16,STextAnim_CurrentY(a1)
+				move.l	a0,STextAnim_TextAdr(a1)
+				move.l	#0,STextAnim_SinOffset(a1)
+				
+.Loop:
+				tst.b	(a0)+
+				bne.s	.Loop
+
+				move.l	a0,d0
+				add.l	#1,d0
+				and.l	#$FFFFFFFE,d0			; make it even
+				
+				move.l	d0,(a2)
+				rts
+
+SinTable16:
+    dc.b    8,8,9,9,10,10,10,11,11,11,12,12,12,13,13,13
+    dc.b    14,14,14,14,15,15,15,15,15,16,16,16,16,16,16,16
+    dc.b    16,16,16,16,16,16,16,15,15,15,15,15,14,14,14,14
+    dc.b    13,13,13,12,12,12,11,11,11,10,10,10,9,9,8,8
+    dc.b    8,8,7,7,6,6,6,5,5,5,4,4,4,3,3,3
+    dc.b    2,2,2,2,1,1,1,1,1,0,0,0,0,0,0,0
+    dc.b    0,0,0,0,0,0,0,1,1,1,1,1,2,2,2,2
+    dc.b    3,3,3,4,4,4,5,5,5,6,6,6,7,7,8,8
+
+;=============================================================================
+; DisplayTextAnim
+;=============================================================================
+DisplayTextAnim:
+				lea		TextAnimation(pc),a3
+				move.l	STextAnim_TextAdr(a3),a4
+				move.l	STextAnim_FinalX(a3),d5
+				move.l	STextAnim_CurrentY(a3),d6
+				move.l	STextAnim_SinOffset(a3),d4
+				lea		SinTable16(pc),a5
+
+.LoopDisplayTextAnim:
+				moveq	#0,d2
+				move.b	(a4)+,d2			; get char
+				beq		.endoftext
+				cmp.b	#32,d2
+				beq		.next				; space
+				
+				move.l	d6,d3
+				moveq	#0,d0
+				move.b	(a5,d4.w),d0
+				add.l	d0,d3
+				cmp.l	STextAnim_FinalY(a3),d3
+				bge.s	.NotAbove
+				move.l	STextAnim_FinalY(a3),d3
+.NotAbove:
+				
+				lea		ScreenBase(pc),a0
+				move.l	(a0),a0
+				move.l	a0,a6
+				add.l	#$8000,a6
+				lea		Font(pc),a1
+				sub.b	#33,d2				; sub first char (start with "!")
+				lsl.l	#5,d2				; *32 : 4 bytes (2 words for 8 pixels) * 8 lines
+				add.l	d2,a1
+				move.l	d5,d0
+				move.l	d3,d1
+
+				lsr.l	#2,d0			; /4, 4 pixels per word.
+				add.l	d0,d0			; *2
+				lsl.l	#7,d1			; y*128
+				add.l	d1,a0			; +y screen
+				add.l	d0,a0			; +x screen
+
+			rept 8
+				cmp.l	a6,a0
+				bcc		.NoMoreDraw
+				move.l  (a1)+,(a0)
+				lea		128(a0),a0
+			endr
+			rept 8
+				cmp.l	a6,a0
+				bcc		.NoMoreDraw
+				move.l  #0,(a0)
+				lea		128(a0),a0
+			endr
+.NoMoreDraw:
+.next:
+				add.l	#8,d5				; next char 8 pixels to the right
+				add.l	#6,d4
+				and.l	#127,d4
+				
+				bra		.LoopDisplayTextAnim
+.endoftext:
+				sub.l	#2,STextAnim_CurrentY(a3)
+				move.l	STextAnim_CurrentY(a3),d0
+				add.l	#20,d0
+				cmp.l	STextAnim_FinalY(a3),d0
+				bge.s	.Above
+				move.l	STextAnim_FinalY(a3),STextAnim_CurrentY(a3)
+
+				bsr		StartNextTextAnimation
+				rts
+
+.Above:				
+				add.l	#2,STextAnim_SinOffset(a3)
+				and.l	#127,STextAnim_SinOffset(a3)
+				rts
+
 ;=============================================================================
 ; Start Logo Retro prog
 ;=============================================================================
@@ -381,6 +575,15 @@ StartLogoRetroProg:
 				
 				rts
 
+	even
+SquareAroundPlasma:
+				dc.l	63,6
+				dc.l	64+128,6
+				dc.l	64+128,250
+				dc.l	63,250
+				dc.l	63,6
+	even
+	
 ;=============================================================================
 ; Start Plasma
 ;=============================================================================
@@ -391,6 +594,25 @@ StartPlasma:
                 move.l  #0,(a0)
 				lea     NbVbl(pc),a0
                 move.l  #0,(a0)
+
+				move.l	#2-1,d3
+.DrawSquareScreen:
+				lea		SquareAroundPlasma(pc),a0
+				move.l	#4-1,d7
+.DrawSquare:
+				move.l	(a0),d0
+				move.l	4(a0),d1
+				move.l	8(a0),d4
+				move.l	12(a0),d5
+				moveq	#1,d6
+				bsr		DrawLine
+				
+				add.l	#8,a0
+				
+				dbra	d7,.DrawSquare
+				bsr		SwapBuffer
+				dbra	d3,.DrawSquareScreen
+				
 				rts
 
 ;=============================================================================
@@ -399,7 +621,7 @@ StartPlasma:
 PlasmaEffect:
 				lea		ScreenBase(pc),a4
 				move.l	(a4),a4
-				add.l	#32+128,a4
+				add.l	#32+128*7,a4
 				
 				lea		SinTable512(pc),a3
 				lea		ColorLUT(pc),a2			; Color in table
@@ -414,9 +636,6 @@ PlasmaEffect:
 				;DBGBREAK
 				add.w	#256,a4
 .NoDecal:				
-				lea     NbLoop(pc),a0
-				move.l	(a0),d7
-				;and.l	#63,d7
 				moveq	#60,d7
 .LoopY:
 				; Wave Y
@@ -448,6 +667,7 @@ PlasmaEffect:
 				; Write color
 				;move.l	d1,128(a4)
 				move.l	d1,(a4)+
+				;move.l	d1,256-4(a4)
 				;move.l	d1,126+128(a4)
 				;move.w	d1,128*3(a4)
 				;add.w	#2,a4
@@ -461,7 +681,7 @@ PlasmaEffect:
  				lea		NbVbl(pc),a1
 				cmp.l	#50*15,(a1)
 				bmi.s	.NoNextPart
-				bsr		StartOutro
+				bsr		StartBobShading
 .NoNextPart:
 
 				rts
@@ -500,63 +720,270 @@ SinTable512:
     dc.b 06,07,08,10,11,13,15,16,18,20,22,24,26,29,31,33
     dc.b 35,37,39,42,44,46,48,50,52,53,55,57,58,60,61,62	
 
+; G0 F0 G1 F1 G2 F2 G3 F3 / R0 B0 R1 B1 R2 B2 R3 B3
+G0 equ %1000000000000000
+G1 equ %0010000000000000
+G2 equ %0000100000000000
+G3 equ %0000001000000000
+   
+B0 equ %0000000001000000
+B1 equ %0000000000010000
+B2 equ %0000000000000100
+B3 equ %0000000000000001
+   
+R0 equ %0000000010000000
+R1 equ %0000000000100000
+R2 equ %0000000000001000
+R3 equ %0000000000000010
+
+G02 equ (G0|G2)
+B02 equ (B0|B2)
+R02 equ (R0|R2)
+G02B13 equ (G0|G2|B1|B3)
+GB02G13 equ (G0|B0|G2|B2|G1|G3)
+R02GB13 equ (R0|R2|G1|G3|B1|B3)
+BR02R13 equ (B0|B2|R0|R2|R1|R3)
+GR02BR13 equ (G0|G2|R0|R2|B1|B3|R1|R3)
+GBR02GR13 equ (G0|G2|R0|R2|B0|B2|G1|G3|R1|R3)
+
 ColorLUT:
     ; --- Bloc 0 (Index 0 à 31) - Noir ---
-    ; Aucun des bits 5, 6 ou 7 n'est à 1.
     dc.l $00000000,$00000000,$00000000,$00000000,$00000000,$00000000,$00000000,$00000000
     dc.l $00000000,$00000000,$00000000,$00000000,$00000000,$00000000,$00000000,$00000000
     dc.l $00000000,$00000000,$00000000,$00000000,$00000000,$00000000,$00000000,$00000000
-    dc.l $00000000,$00000000,$00000000,$00000000,$00000000,$00000000,$00000000,$00000000
+    dc.w B02,B02,B02,B02,B02,B02,B02,B02,B02,B02,B02,B02,B02,B02,B02,B02
 
     ; --- Bloc 1 (Index 32 à 63) - Bleu ---
-    ; Seul le bit 5 (valeur 32) est à 1.
+    dc.w B02,B02,B02,B02,B02,B02,B02,B02,B02,B02,B02,B02,B02,B02,B02,B02
     dc.l $00550055,$00550055,$00550055,$00550055,$00550055,$00550055,$00550055,$00550055
     dc.l $00550055,$00550055,$00550055,$00550055,$00550055,$00550055,$00550055,$00550055
-    dc.l $00550055,$00550055,$00550055,$00550055,$00550055,$00550055,$00550055,$00550055
-    dc.l $00550055,$00550055,$00550055,$00550055,$00550055,$00550055,$00550055,$00550055
+	dc.w G02B13,G02B13,G02B13,G02B13,G02B13,G02B13,G02B13,G02B13,G02B13,G02B13,G02B13,G02B13,G02B13,G02B13,G02B13,G02B13
 
     ; --- Bloc 2 (Index 64 à 95) - Vert ---
-    ; Seul le bit 6 (valeur 64) est à 1.
+	dc.w G02B13,G02B13,G02B13,G02B13,G02B13,G02B13,G02B13,G02B13,G02B13,G02B13,G02B13,G02B13,G02B13,G02B13,G02B13,G02B13
     dc.l $AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00
     dc.l $AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00
-    dc.l $AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00
-    dc.l $AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00,$AA00AA00
+    dc.w GB02G13,GB02G13,GB02G13,GB02G13,GB02G13,GB02G13,GB02G13,GB02G13,GB02G13,GB02G13,GB02G13,GB02G13,GB02G13,GB02G13,GB02G13,GB02G13
 
     ; --- Bloc 3 (Index 96 à 127) - Cyan (Vert + Bleu) ---
-    ; Bits 5 et 6 sont à 1. ($AA00 | $0055 = $AA55)
+    dc.w GB02G13,GB02G13,GB02G13,GB02G13,GB02G13,GB02G13,GB02G13,GB02G13,GB02G13,GB02G13,GB02G13,GB02G13,GB02G13,GB02G13,GB02G13,GB02G13
     dc.l $AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55
     dc.l $AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55
-    dc.l $AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55
-    dc.l $AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55,$AA55AA55
+    dc.w R02GB13,R02GB13,R02GB13,R02GB13,R02GB13,R02GB13,R02GB13,R02GB13,R02GB13,R02GB13,R02GB13,R02GB13,R02GB13,R02GB13,R02GB13,R02GB13
 
     ; --- Bloc 4 (Index 128 à 159) - Rouge ---
-    ; Seul le bit 7 (valeur 128) est à 1.
+    dc.w R02GB13,R02GB13,R02GB13,R02GB13,R02GB13,R02GB13,R02GB13,R02GB13,R02GB13,R02GB13,R02GB13,R02GB13,R02GB13,R02GB13,R02GB13,R02GB13
     dc.l $00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA
     dc.l $00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA
-    dc.l $00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA
-    dc.l $00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA,$00AA00AA
+    dc.w BR02R13,BR02R13,BR02R13,BR02R13,BR02R13,BR02R13,BR02R13,BR02R13,BR02R13,BR02R13,BR02R13,BR02R13,BR02R13,BR02R13,BR02R13,BR02R13
 
     ; --- Bloc 5 (Index 160 à 191) - Magenta (Rouge + Bleu) ---
-    ; Bits 5 et 7 sont à 1. ($00AA | $0055 = $00FF)
+    dc.w BR02R13,BR02R13,BR02R13,BR02R13,BR02R13,BR02R13,BR02R13,BR02R13,BR02R13,BR02R13,BR02R13,BR02R13,BR02R13,BR02R13,BR02R13,BR02R13
     dc.l $00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF
     dc.l $00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF
-    dc.l $00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF
-    dc.l $00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF,$00FF00FF
+    dc.w GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13
 
     ; --- Bloc 6 (Index 192 à 223) - Jaune (Rouge + Vert) ---
-    ; Bits 6 et 7 sont à 1. ($00AA | $AA00 = $AAAA)
+    dc.w GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13,GR02BR13
     dc.l $AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA
     dc.l $AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA
-    dc.l $AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA
-    dc.l $AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA,$AAAAAAAA
+    dc.w GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13
 
     ; --- Bloc 7 (Index 224 à 255) - Blanc (Rouge + Vert + Bleu) ---
-    ; Bits 5, 6 et 7 sont à 1.
+    dc.w GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13,GBR02GR13
     dc.l $AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF
     dc.l $AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF
     dc.l $AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF
-    dc.l $AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF,$AAFFAAFF
+
+;=============================================================================
+; Start bob shading
+;=============================================================================
+StartBobShading:
+				lea		DemoStatus(pc),a0
+				move.l	#STATUS_DEMO_BOB_SHADING,(a0)
+
+				lea     NbVbl(pc),a1
+				move.l	#0,(a1)
+				lea     NbLoop(pc),a1
+				move.l	#0,(a1)
+				
+				lea		$20000,a0
+				move.l	#0,d0
+				;move.l	#$AAFFAAFF,d0
+				bsr		ClearScreenMinusOneLine
+
+				lea		$28000,a0
+				move.l	#0,d0
+				;move.l	#$AAFFAAFF,d0
+				bsr		ClearScreenMinusOneLine
+				
+				lea		Current_Bob(pc),a0
+				lea		Bob_01(pc),a1
+				move.l	a1,(a0)
+				lea		Bob_02(pc),a1
+				move.l	a1,4(a0)
+				rts
+
+BobShading:
+    dc.b 0,1,0,1, 1,0,1,0
+    dc.b 0,1,2,1, 2,1,1,0
+    dc.b 1,2,1,2, 1,2,1,1
+    dc.b 1,2,1,2, 1,2,2,1
+    dc.b 1,2,2,2, 2,2,2,1
+    dc.b 1,2,1,2, 1,2,2,1
+    dc.b 1,2,1,2, 1,2,1,1
+    dc.b 1,1,2,2, 2,2,1,1
+    dc.b 0,1,2,1, 2,1,1,0
+    dc.b 0,1,0,1, 1,0,1,0
+
+	even
+
+	RSRESET
+SBob_SinOffest:				RS.L 1
+SBob_CosOffest:				RS.L 1
+SBob_SinAdd:				RS.L 1
+SBob_CosAdd:				RS.L 1
+SBob_SIZEOF:     			RS.B 0
+
+Bob_01:			dc.l	0, 0, 4, -3
+Bob_02:			dc.l	0, 0, -2, 1
+Bob_03:			dc.l	0, 0, -1, 5
+Bob_04:			dc.l	0, 0, 2, -3
+
+Current_Bob:	dc.l	0,0
+
+ColorBobTrans:
+	dc.w	ColorPixelBlack
+	dc.w	ColorPixelBlue
+	dc.w	ColorPixelRed
+	dc.w	ColorPixelMagenta
+	dc.w	ColorPixelGreen
+	dc.w	ColorPixelYellow
+	dc.w	ColorPixelYellow
+	dc.w	ColorPixelWhite
 	
+;=============================================================================
+; a0 : SBob
+; d0.l : X, d1.l : Y
+;=============================================================================
+AddOneBob:
+				move.l	SBob_SinOffest(a0),d2
+				add.l	SBob_SinAdd(a0),d2
+				and.l	#511,d2
+				move.l	d2,SBob_SinOffest(a0)
+
+				move.l	SBob_CosOffest(a0),d3
+				add.l	SBob_CosAdd(a0),d3
+				and.l	#511,d3
+				move.l	d3,SBob_CosOffest(a0)
+				
+				lea		sin_table_8_232(pc),a1
+				move.l	#0,d0
+				move.b	(a1,d2.w),d0
+				move.l	#0,d1
+				move.b	(a1,d3.w),d1
+
+				lea		$20000,a4
+				lea 	BobShading(pc),a5
+				lea 	ColorBobTrans(pc),a6
+				
+				move.l	d0,d4
+				move.l	d1,d5
+				move.l	#10-1,d7
+.LoopY:
+				move.l	#8-1,d6
+.LoopX:
+				move.l	#0,d3
+				move.b	(a5)+,d3
+				beq		.NoAdd
+
+				move.l	d4,d0
+				add.l	d6,d0
+				move.l	d5,d1
+				add.l	d7,d1
+				
+				bsr		GetPixel
+				
+				move.l	#0,d0
+				move.l	d2,d1
+				and.l	#$8000,d1
+				beq.s	.NoGreen
+				or.b	#%100,d0
+.NoGreen:
+				move.l	d2,d1
+				and.l	#$80,d1
+				beq.s	.NoRed
+				or.b	#%010,d0
+.NoRed:
+				move.l	d2,d1
+				and.l	#$40,d1
+				beq.s	.NoBlue
+				or.b	#%001,d0
+.NoBlue:
+				add.b	d0,d3
+				cmp.l	#7,d3
+				bmi.s	.NoMax
+				move.b	#7,d3
+.NoMax:
+				lsl.w	#1,d3
+				move.w	(a6,d3.w),d3
+				move.w	d3,a3
+
+				move.l	d4,d0
+				add.l	d6,d0
+				move.l	d5,d1
+				add.l	d7,d1
+				
+				PlotPixelStart
+				move.l	a1,a2
+				add.l	#$8000,a2
+				and.w	d3,(a2)
+				;move.w	#ColorPixelWhite,d3
+				move.w	a3,d3
+                ror.w   d2,d3
+                or.w    d3,(a1)
+                or.w    d3,(a2)
+.NoAdd:
+				dbra	d6,.LoopX
+				dbra	d7,.LoopY
+				
+				rts
+
+;=============================================================================
+; Process bob shading
+;=============================================================================
+ProcessBobShading:
+				lea		Current_Bob(pc),a0
+				move.l	(a0),a0
+				bsr		AddOneBob
+
+				lea		Current_Bob(pc),a0
+				move.l	4(a0),a0
+				bsr		AddOneBob
+				
+				lea		NbLoop(pc),a0
+				cmp.l	#300,(a0)
+				beq.s	.StartNextBob
+
+				lea		NbLoop(pc),a0
+				cmp.l	#600,(a0)
+				beq.s	.EndBob
+
+				rts
+				
+.StartNextBob:
+				lea		Current_Bob(pc),a0
+				lea		Bob_01(pc),a1
+				move.l	a1,(a0)
+				lea		Bob_02(pc),a1
+				move.l	a1,4(a0)
+				
+				bsr		ProcessEraseScreen
+				rts
+.EndBob:
+				bsr		StartOutro
+				rts
+
 ;=============================================================================
 ; Start outro
 ;=============================================================================
@@ -1104,8 +1531,6 @@ ImageDeformationTest:
 ; Swap buffer for double buffering
 ;=============================================================================
 SwapBuffer:
-			; Double buffering
-			ifd DOUBLE_BUFFERING				
 				lea		ScreenBase(pc),a0
 				lea		BufferNum(pc),a1
 				move.l	(a0),d0
@@ -1126,7 +1551,6 @@ SwapBuffer:
 				move.l	#$20000,(a0)
 				move.w	#1,(a1)
 .swapscreen2:
-			endif
 				rts
 				
 ;=============================================================================
@@ -1195,6 +1619,7 @@ DisplayText:
 ;=============================================================================
 DisplaySprite32x32Masked:
 				;DBGBREAK
+				
 				move.l	d0,d3
 				lsr.l	#2,d0			; /4, 4 pixels per word.
 				add.l	d0,d0			; *2
@@ -1241,7 +1666,7 @@ DisplaySprite32x32:
 				rts
 
 ;=============================================================================
-; Display a sprite, 8x8 no mask, no shifting, !!! no clipping !!!
+; Display a sprite, 8x8 no mask, no shifting, no clipping
 ; Input : -
 ;		d0.l = x
 ;		d1.l = y
@@ -1249,7 +1674,7 @@ DisplaySprite32x32:
 ;		a1 = sprite base
 ; Output : -
 ; Destroy :
-;		d0, d1
+;		d0, d1, a1
 ;
 ; TODO : 
 ;	- optimiser avec du .b (255 max pour les coord)
@@ -1262,14 +1687,11 @@ DisplaySprite8x8:
 				add.l	d1,a0			; +y screen
 				add.l	d0,a0			; +x screen
 
-				move.l  (a1)+,(a0)
-				move.l  (a1)+,128(a0)
-				move.l  (a1)+,256(a0)
-				move.l  (a1)+,384(a0)
-				move.l  (a1)+,512(a0)
-				move.l  (a1)+,640(a0)
-				move.l  (a1)+,768(a0)
-				move.l  (a1)+,896(a0)
+.y set 0
+			rept 8
+				move.l  (a1)+,.y(a0)
+.y set .y+128
+			endr
 
 				rts
 
@@ -1285,9 +1707,9 @@ NbVbl:						dc.l	0					; Nb Vbl (50 FPS) triggered (for real time counter)
 VblLastLoop:				dc.l	0					; Num of the last frame that triggered a Vbl for the main process
 VblInt:						dc.l	0					; 0 if we must wait, 1 if vbl int occurs
 
+	dcb.w	50,0
 VBLRouterList:				dc.l	0,VBLInterrupt		; !!! Must be relocated !!!
 	even
-
 ;=============================================================================
 VBLInterrupt:
 				movem.l d0-a6,-(sp)
@@ -1500,106 +1922,81 @@ CopyScreenMinusOneLine:
 				lea		32(a1),a1
 			endr
                 rts
-			
+
 ; =============================================================================
 ;  ZONE DE DONNÉES / VARIABLES
 ; =============================================================================
-				even
+	even
 ScreenBase:					dc.l	$20000
 ScreenBaseFront:			dc.l	$28000
 	even
 BufferNum:					dc.w	0
 	even
-							dcb.b	2048,0
+							dcb.b	512,0
 TopOfStack:
 	even
 
-SinTable0_80:
-    dc.b 42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57
-    dc.b 58,59,60,61,62,63,64,65,66,66,67,68,69,70,71,71
-    dc.b 72,73,73,74,75,76,76,77,77,78,78,79,79,80,80,81
-    dc.b 81,82,82,82,83,83,83,83,84,84,84,84,84,84,84,84
-    dc.b 85,84,84,84,84,84,84,84,84,83,83,83,83,82,82,82
-    dc.b 81,81,80,80,79,79,78,78,77,77,76,76,75,74,73,73
-    dc.b 72,71,71,70,69,68,67,66,66,65,64,63,62,61,60,59
-    dc.b 58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43
-    dc.b 42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27
-    dc.b 26,25,24,23,22,21,20,19,18,18,17,16,15,14,13,13
-    dc.b 12,11,11,10,9,8,8,7,7,6,6,5,5,4,4,3
-    dc.b 3,2,2,2,1,1,1,1,0,0,0,0,0,0,0,0
-    dc.b 0,0,0,0,0,0,0,0,0,1,1,1,1,2,2,2
-    dc.b 3,3,4,4,5,5,6,6,7,7,8,8,9,10,11,11
-    dc.b 12,13,13,14,15,16,17,18,18,19,20,21,22,23,24,25
-    dc.b 26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41
+TableSin256: ; 256 value, from -255 to 255
+	dc.w    0, 6, 13, 19, 25, 31, 37, 44, 50, 56, 62, 68, 74, 80, 86, 92
+	dc.w    98, 103, 109, 115, 120, 126, 131, 136, 142, 147, 152, 157, 162, 167, 171, 176
+	dc.w    180, 185, 189, 193, 197, 201, 205, 208, 212, 215, 219, 222, 225, 228, 231, 233
+	dc.w    236, 238, 241, 243, 245, 247, 248, 250, 251, 253, 254, 254, 255, 255, 255, 255
+	dc.w    255, 255, 255, 255, 254, 254, 253, 251, 250, 248, 247, 245, 243, 241, 238, 236
+	dc.w    233, 231, 228, 225, 222, 219, 215, 212, 208, 205, 201, 197, 193, 189, 185, 180
+	dc.w    176, 171, 167, 162, 157, 152, 147, 142, 136, 131, 126, 120, 115, 109, 103, 98
+	dc.w    92, 86, 80, 74, 68, 62, 56, 50, 44, 37, 31, 25, 19, 13, 6, 0
+	dc.w    0, -6, -13, -19, -25, -31, -37, -44, -50, -56, -62, -68, -74, -80, -86, -92
+	dc.w    -98, -103, -109, -115, -120, -126, -131, -136, -142, -147, -152, -157, -162, -167, -171, -176
+	dc.w    -180, -185, -189, -193, -197, -201, -205, -208, -212, -215, -219, -222, -225, -228, -231, -233
+	dc.w    -236, -238, -241, -243, -245, -247, -248, -250, -251, -253, -254, -254, -255, -255, -255, -255
+	dc.w    -255, -255, -255, -255, -254, -254, -253, -251, -250, -248, -247, -245, -243, -241, -238, -236
+	dc.w    -233, -231, -228, -225, -222, -219, -215, -212, -208, -205, -201, -197, -193, -189, -185, -180
+	dc.w    -176, -171, -167, -162, -157, -152, -147, -142, -136, -131, -126, -120, -115, -109, -103, -98
+	dc.w    -92, -86, -80, -74, -68, -62, -56, -50, -44, -37, -31, -25, -19, -13, -6, 0
 	even
 
-TableSpeSin:
-        DC.B 0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8
-        DC.B 9,9,10,10,11,11,12,12,13,13,13,14,14,15,15,16
-        DC.B 16,17,17,18,18,18,19,19,20,20,20,21,21,22,22,22
-        DC.B 23,23,23,24,24,24,25,25,25,25,26,26,26,27,27,27
-        DC.B 27,27,28,28,28,28,28,29,29,29,29,29,29,30,30,30
-        DC.B 30,30,30,30,30,30,31,31,31,31,31,31,31,31,31,31
-        DC.B 31,31,31,31,31,31,31,31,31,31,31,31,31,31,31,31
-        DC.B 31,31,31,31,30,30,30,30,30,30,30,30,30,30,30,30
-        DC.B 30,29,29,29,29,29,29,29,29,29,29,29,29,28,28,28
-        DC.B 28,28,28,28,28,28,28,28,27,27,27,27,27,27,27,27
-        DC.B 27,27,27,27,26,26,26,26,26,26,26,26,26,26,26,26
-        DC.B 26,26,26,26,25,25,25,25,25,25,25,25,25,25,25,25
-        DC.B 25,25,25,25,25,25,25,24,24,24,24,24,24,24,24,24
-        DC.B 24,24,24,24,24,24,24,24,24,23,23,23,23,23,23,23
-        DC.B 23,23,23,23,23,23,23,22,22,22,22,22,22,22,22,22
-        DC.B 21,21,21,21,21,21,21,21,20,20,20,20,20,20,20,19
-        DC.B 19,19,19,19,19,18,18,18,18,18,18,17,17,17,17,17
-        DC.B 16,16,16,16,16,15,15,15,15,15,14,14,14,14,14,13
-        DC.B 13,13,13,13,12,12,12,12,11,11,11,11,11,10,10,10
-        DC.B 10,10,9,9,9,9,8,8,8,8,8,8,7,7,7,7
-        DC.B 7,6,6,6,6,6,6,5,5,5,5,5,5,5,5,4
-        DC.B 4,4,4,4,4,4,4,4,3,3,3,3,3,3,3,3
-        DC.B 3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3
-        DC.B 3,3,3,3,3,3,3,3,3,3,3,3,4,4,4,4
-        DC.B 4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5
-        DC.B 5,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7
-        DC.B 7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,8
-        DC.B 9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9
-        DC.B 9,9,9,9,9,9,9,9,9,9,9,9,9,9,8,8
-        DC.B 8,8,8,8,8,8,8,8,8,7,7,7,7,7,7,7
-        DC.B 6,6,6,6,6,6,5,5,5,5,5,4,4,4,4,4
-        DC.B 3,3,3,3,3,2,2,2,2,2,1,1,1,1,0,0
-        DC.B 0,0,0,-1,-1,-1,-1,-2,-2,-2,-2,-2,-3,-3,-3,-3
-        DC.B -3,-4,-4,-4,-4,-4,-5,-5,-5,-5,-5,-6,-6,-6,-6,-6
-        DC.B -6,-7,-7,-7,-7,-7,-7,-7,-8,-8,-8,-8,-8,-8,-8,-8
-        DC.B -8,-8,-8,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9
-        DC.B -9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9
-        DC.B -9,-8,-8,-8,-8,-8,-8,-8,-8,-8,-8,-8,-8,-7,-7,-7
-        DC.B -7,-7,-7,-7,-7,-7,-7,-6,-6,-6,-6,-6,-6,-6,-6,-6
-        DC.B -5,-5,-5,-5,-5,-5,-5,-5,-5,-4,-4,-4,-4,-4,-4,-4
-        DC.B -4,-4,-4,-4,-4,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3
-        DC.B -3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3
-        DC.B -3,-3,-3,-3,-3,-3,-3,-3,-3,-4,-4,-4,-4,-4,-4,-4
-        DC.B -4,-4,-5,-5,-5,-5,-5,-5,-5,-5,-6,-6,-6,-6,-6,-6
-        DC.B -7,-7,-7,-7,-7,-8,-8,-8,-8,-8,-8,-9,-9,-9,-9,-10
-        DC.B -10,-10,-10,-10,-11,-11,-11,-11,-11,-12,-12,-12,-12,-13,-13,-13
-        DC.B -13,-13,-14,-14,-14,-14,-14,-15,-15,-15,-15,-15,-16,-16,-16,-16
-        DC.B -16,-17,-17,-17,-17,-17,-18,-18,-18,-18,-18,-18,-19,-19,-19,-19
-        DC.B -19,-19,-20,-20,-20,-20,-20,-20,-20,-21,-21,-21,-21,-21,-21,-21
-        DC.B -21,-22,-22,-22,-22,-22,-22,-22,-22,-22,-23,-23,-23,-23,-23,-23
-        DC.B -23,-23,-23,-23,-23,-23,-23,-23,-24,-24,-24,-24,-24,-24,-24,-24
-        DC.B -24,-24,-24,-24,-24,-24,-24,-24,-24,-24,-25,-25,-25,-25,-25,-25
-        DC.B -25,-25,-25,-25,-25,-25,-25,-25,-25,-25,-25,-25,-25,-26,-26,-26
-        DC.B -26,-26,-26,-26,-26,-26,-26,-26,-26,-26,-26,-26,-26,-27,-27,-27
-        DC.B -27,-27,-27,-27,-27,-27,-27,-27,-27,-28,-28,-28,-28,-28,-28,-28
-        DC.B -28,-28,-28,-28,-29,-29,-29,-29,-29,-29,-29,-29,-29,-29,-29,-29
-        DC.B -30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-31,-31,-31
-        DC.B -31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31
-        DC.B -31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-30,-30,-30,-30,-30
-        DC.B -30,-30,-30,-30,-29,-29,-29,-29,-29,-29,-28,-28,-28,-28,-28,-27
-        DC.B -27,-27,-27,-27,-26,-26,-26,-25,-25,-25,-25,-24,-24,-24,-23,-23
-        DC.B -23,-22,-22,-22,-21,-21,-20,-20,-20,-19,-19,-18,-18,-18,-17,-17
-        DC.B -16,-16,-15,-15,-14,-14,-13,-13,-13,-12,-12,-11,-11,-10,-10,-9
-        DC.B -9,-8,-7,-7,-6,-6,-5,-5,-4,-4,-3,-3,-2,-2,-1,-1
+sin_table_8_232:
+    ; 0° à 90° (0 à 127)
+    dc.b 120,121,123,124,125,127,128,130,131,132,134,135,136,138,139,140
+    dc.b 142,143,145,146,147,149,150,151,153,154,155,157,158,159,160,162
+    dc.b 163,164,165,167,168,169,170,172,173,174,175,176,178,179,180,181
+    dc.b 182,183,185,186,187,188,189,190,191,192,193,194,195,196,197,198
+    dc.b 199,200,201,202,203,204,205,206,207,208,209,209,210,211,212,213
+    dc.b 213,214,215,216,216,217,218,218,219,220,220,221,222,222,223,223
+    dc.b 223,224,224,225,225,226,226,227,227,228,228,228,229,229,229,230
+    dc.b 230,230,230,231,231,231,231,232,232,232,232,232,232,232,232,232
 
+    ; 90° à 180° (128 à 255)
+    dc.b 232,232,232,232,232,232,232,232,232,231,231,231,231,230,230,230
+    dc.b 230,229,229,229,228,228,228,227,227,226,226,225,225,224,224,223
+    dc.b 223,223,222,222,221,220,220,219,218,218,217,216,216,215,214,213
+    dc.b 213,212,211,210,209,209,208,207,206,205,204,203,202,201,200,199
+    dc.b 198,197,196,195,194,193,192,191,190,189,188,187,186,185,183,182
+    dc.b 181,180,179,178,176,175,174,173,172,170,169,168,167,165,164,163
+    dc.b 162,160,159,158,157,155,154,153,151,150,149,147,146,145,143,142
+    dc.b 140,139,138,136,135,134,132,131,130,128,127,125,124,123,121,120
+
+    ; 180° à 270° (256 à 383)
+    dc.b 120,119,117,116,115,113,112,110,109,108,106,105,104,102,101,100
+    dc.b 98,97,95,94,93,91,90,89,87,86,85,83,82,81,80,78
+    dc.b 77,76,75,73,72,71,70,68,67,66,65,64,62,61,60,59
+    dc.b 58,57,55,54,53,52,51,50,49,48,47,46,45,44,43,42
+    dc.b 41,40,39,38,37,36,35,34,33,32,31,31,30,29,28,27
+    dc.b 27,26,25,24,24,23,22,22,21,20,20,19,18,18,17,17
+    dc.b 17,16,16,15,15,14,14,13,13,12,12,12,11,11,11,10
+    dc.b 10,10,10,9,9,9,9,8,8,8,8,8,8,8,8,8
+
+    ; 270° à 360° (384 à 511)
+    dc.b 8,8,8,8,8,8,8,8,8,9,9,9,9,10,10,10
+    dc.b 10,11,11,11,12,12,12,13,13,14,14,15,15,16,16,17
+    dc.b 17,17,18,18,19,20,20,21,22,22,23,24,24,25,26,27
+    dc.b 27,28,29,30,31,31,32,33,34,35,36,37,38,39,40,41
+    dc.b 42,43,44,45,46,47,48,49,50,51,52,53,54,55,57,58
+    dc.b 59,60,61,62,64,65,66,67,68,70,71,72,73,75,76,77
+    dc.b 78,80,81,82,83,85,86,87,89,90,91,93,94,95,97,98
+    dc.b 100,101,102,104,105,106,108,109,110,112,113,115,116,117,119,120
 	
+	even
 	
 Font:						incbin 		"Data\Font8x8.bin"
 	even
@@ -1613,8 +2010,7 @@ Outro02:					incbin 		"Data\Demo\Outro_02.bin.zx0"
 	even
 OlipixChara:				incbin 		"Data\Demo\Olipix_Chara.bin"
 	even
-Demo01:						;incbin 		"Data\Demo01.bin"
-	even
 BufferData:
 		dcb.b				32*1024,0
 
+ 

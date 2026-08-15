@@ -1,11 +1,11 @@
 ColorPixelBlack		equ		$0000
-ColorPixelWhite		equ		$80C0
+ColorPixelBlue		equ		$0040
 ColorPixelRed		equ		$0080
 ColorPixelMagenta	equ		$00C0
 ColorPixelGreen		equ		$8000
 ColorPixelCyan		equ		$8040
 ColorPixelYellow	equ		$8080
-ColorPixelBlue		equ		$0040
+ColorPixelWhite		equ		$80C0
 
 ; G0 F0 G1 F1 G2 F2 G3 F3
 ; R0 B0 R1 B1 R2 B2 R3 B3
@@ -59,7 +59,7 @@ PlotPixel:
                 rts
 
 ; =============================================================================
-; PlotPixel 8 colors mode
+; GetPixel 8 colors mode
 ; Input :
 ; 		d0 = X (0-255)
 ;		d1 = Y (0-255)
