@@ -61,8 +61,10 @@ Start:
 				lea		Music_Demoscene(pc),a0
 				bsr		StartMusic
 
+				;bsr		StartLogoEko
+
+				bsr		StartFireEffect
 				;bsr		StartBobShading
-				bsr		StartLogoEko
 				;bsr			StartPlasma
 				;bsr		StartOutro
 				;bsr		StartCharaFalling
@@ -111,6 +113,9 @@ MainLoop:
 				cmp.l	#STATUS_DEMO_BOB_SHADING,d0
 				beq.s   .CaseBobShading
 
+				cmp.l	#STATUS_DEMO_FIRE,d0
+				beq.s   .CaseFire
+
 				cmp.l	#STATUS_DEMO_OUTRO_01,d0
 				beq.s   .CaseOutro01
 
@@ -144,6 +149,10 @@ MainLoop:
 				bsr		ProcessBobShading
 				bra.s   .EndSwitch
 
+.CaseFire:
+				bsr		ProcessFireEffect
+				bra.s   .EndSwitch
+				
 .CaseOutro01:
 				cmp.l	#150,d6
 				bmi		.NotEndCaseOutro01
@@ -188,9 +197,10 @@ STATUS_DEMO_OUTRO_3D			equ			5
 STATUS_DEMO_LOGO_EKO			equ			6
 STATUS_DEMO_LOGO_RETRO_PROG		equ			7
 STATUS_DEMO_BOB_SHADING			equ			8
+STATUS_DEMO_FIRE				equ			9
 
 	even
-DemoStatus:			dc.l	STATUS_DEMO_PLASMA_EFFECT
+DemoStatus:			dc.l	STATUS_DEMO_OUTRO_01
 
 ;=============================================================================
 ; Process Erase Screen
@@ -343,18 +353,20 @@ ERASE_NB_SQUARE_SAME_TIME	equ		512
 StartLogoEko:
 				lea		$20000,a0
 				move.l	#$AAFFAAFF,d0
+				move.l	#0,d0
 				bsr		ClearScreenMinusOneLine
 
 				lea		$28000,a0
 				move.l	#$AAFFAAFF,d0
+				move.l	#0,d0
 				bsr		ClearScreenMinusOneLine
 
 				lea		LogoEko(pc),a0
-				lea		$20000+128*(128-86/2),a1
+				lea		$20000+128*(128-150/2),a1
 				bsr		zx0_decompress
 
 				lea		LogoEko(pc),a0
-				lea		$28000+128*(128-86/2),a1
+				lea		$28000+128*(128-150/2),a1
 				bsr		zx0_decompress
 
 				lea		DemoStatus(pc),a0
@@ -387,8 +399,8 @@ ProcessLogoEko:
 				rts
 				
 							even
-Text_Presents:				dc.l		128-11*8/2, 50
-							dc.b		"EKO IS BACK",0
+Text_Presents:				dc.l		128-18*8/2, 50
+							dc.b		"EKO SYSTEM IS BACK",0
 							even
 Text_ADemo:					dc.l		128-11*8/2, 50+8*2
 							dc.b		"WITH A DEMO",0
@@ -624,7 +636,7 @@ PlasmaEffect:
 				add.l	#32+128*7,a4
 				
 				lea		SinTable512(pc),a3
-				lea		ColorLUT(pc),a2			; Color in table
+				lea		PlasmaColorLUT(pc),a2			; Color in table
 				
 				lea		NbLoop(pc),a1
 				move.l	(a1),d5
@@ -746,7 +758,7 @@ BR02R13 equ (B0|B2|R0|R2|R1|R3)
 GR02BR13 equ (G0|G2|R0|R2|B1|B3|R1|R3)
 GBR02GR13 equ (G0|G2|R0|R2|B0|B2|G1|G3|R1|R3)
 
-ColorLUT:
+PlasmaColorLUT:
     ; --- Bloc 0 (Index 0 à 31) - Noir ---
     dc.l $00000000,$00000000,$00000000,$00000000,$00000000,$00000000,$00000000,$00000000
     dc.l $00000000,$00000000,$00000000,$00000000,$00000000,$00000000,$00000000,$00000000
@@ -981,9 +993,281 @@ ProcessBobShading:
 				bsr		ProcessEraseScreen
 				rts
 .EndBob:
-				bsr		StartOutro
+				bsr		StartFireEffect
 				rts
 
+;=============================================================================
+; Start Fire Effect
+;=============================================================================
+StartFireEffect:
+				bsr		ProcessEraseScreen
+
+				lea		Fireplace(pc),a0
+				lea		$20000+128,a1
+				bsr		zx0_decompress
+
+				lea		Fireplace(pc),a0
+				lea		$28000+128,a1
+				bsr		zx0_decompress
+
+				lea		DemoStatus(pc),a0
+				move.l	#STATUS_DEMO_FIRE,(a0)
+
+				lea     NbVbl(pc),a1
+				move.l	#0,(a1)
+				lea     NbLoop(pc),a1
+				move.l	#0,(a1)
+
+				;bsr		DeactivateSwapBuffer
+
+; Fill for buffer with only one line at the bottom
+				lea		BufferData(pc),a0
+				move.l	#FIRE_EFFECT_SIZE_Y-1-1,d7
+.LoopY:				
+				move.l	#FIRE_EFFECT_SIZE_X-1,d6
+.LoopX:
+				move.b	#0,(a0)+
+				dbra	d6,.LoopX
+				dbra	d7,.LoopY
+
+				move.l	#FIRE_EFFECT_SIZE_X*2-1,d6
+.LoopXLastLine:
+				move.b	#126,(a0)+						; Direclty multiplied by 2 for .w LUT colot access
+				dbra	d6,.LoopXLastLine
+
+; Create speudo random for sub and displacement
+ ;DBGBREAK
+				lea		BufferData(pc),a0
+				add.l	#FIRE_EFFECT_SIZE_Y*FIRE_EFFECT_SIZE_X,a0
+				move.l	#FIRE_EFFECT_RANDOM_SIZE-1,d7
+.LoopRandom:
+				bsr		GetRandom
+				and.l	#3,d0
+				lsl.l	#1,d0
+				move.b	d0,(a0)+						; Sub value for dot fire
+				dbra	d7,.LoopRandom
+
+				rts
+
+FIRE_EFFECT_SIZE_X		equ		(4*42)/4
+FIRE_EFFECT_SIZE_Y		equ		64
+FIRE_EFFECT_RANDOM_SIZE	equ		1024+FIRE_EFFECT_SIZE_X*FIRE_EFFECT_SIZE_Y
+FIRE_DECAL_POS_Y		equ		108
+
+B13 equ (B1|B3)
+B0123 equ (B0|B1|B2|B3)
+B02R13 equ (B0|B2|R1|R3)
+R0123 equ (R0|R1|R2|R3)
+R02B13R13 equ (R0|R2|B1|B3|R1|R3)
+R0123B0123 equ (R0123|B0123)
+R02B02G13 equ (R0|R2|B0|B2|G1|G3)
+G0123 equ (G0|G1|G2|G3)
+G02B13G13 equ (G0|G2|B1|B3|G1|G3)
+R02G13R13 equ (R0|R2|G1|G3|R1|R3)
+G0123R0123 equ (G0123|R0123)
+G02R02B13G13R13 equ (G0|G2|R0|R2|B1|B3|G1|G3|R1|R3)
+B0123G0123R0123 equ (B0123|G0123|R0123)
+
+FireColorLUT:
+;Black
+	dc.w		0,0,0,0,0,0,0,0
+;Black->Blue
+	dc.w		B13,B13,B13,B13,B13,B13,B13
+;Blue
+	dc.w		B0123,B0123,B0123,B0123,B0123,B0123,B0123
+;Blue->Red
+	dc.w		B02R13,B02R13,B02R13,B02R13,B02R13,B02R13,B02R13
+;Red
+	dc.w		R0123,R0123,R0123,R0123,R0123,R0123,R0123
+;Red->Yellow
+	dc.w		R02G13R13,R02G13R13,R02G13R13,R02G13R13,R02G13R13,R02G13R13,R02G13R13
+;Yellow
+	dc.w		G0123R0123,G0123R0123,G0123R0123,G0123R0123,G0123R0123,G0123R0123,G0123R0123
+;Yellow->White
+	dc.w		G02R02B13G13R13,G02R02B13G13R13,G02R02B13G13R13,G02R02B13G13R13,G02R02B13G13R13,G02R02B13G13R13,G02R02B13G13R13
+;White
+	dc.w		B0123G0123R0123,B0123G0123R0123,B0123G0123R0123,B0123G0123R0123,B0123G0123R0123,B0123G0123R0123,B0123G0123R0123
+
+FireSeed:	dc.l		$12345678
+
+
+
+;=============================================================================
+; Process Fire Effect
+;=============================================================================
+
+ macro DoOneFireDot
+				move.b	(a3)+,d1
+				move.b	FIRE_EFFECT_SIZE_X(a0),d0
+				sub.b	d1,d0
+				bcc.s	.NotNeg\@
+				moveq	#0,d0
+.NotNeg\@:
+				move.b	d0,(a0)+
+				move.w	(a1,d0.w),(a2)+
+
+ endm
+ 
+ProcessFireEffect:
+; Process fire
+	;DBGBREAK
+				move.l	ScreenBase(pc),a2
+				add.l	#64-FIRE_EFFECT_SIZE_X,a2
+				;add.l	#(256-FIRE_EFFECT_SIZE_Y-2)*128,a2
+				add.l	#128*FIRE_DECAL_POS_Y,a2
+				move.l	NbLoop(pc),d0
+				btst	#1,d0
+				beq.s	.NoAdd
+				add.l	#128,a2
+.NoAdd:
+
+				lea		FireColorLUT(pc),a1
+				lea		BufferData(pc),a0
+
+				lea		BufferData(pc),a3
+				add.l	#FIRE_EFFECT_SIZE_Y*FIRE_EFFECT_SIZE_X,a3		; Random precalc table
+				
+				lea		FireSeed(pc),a4
+				move.l	(a4),d0
+				add.l	#134,d0
+				and.l	#1023,d0
+				move.l	d0,(a4)
+				add.l	d0,a3
+
+				moveq	#0,d0
+
+				move.l	#FIRE_EFFECT_SIZE_Y-1-1,d7
+.LoopY:				
+			rept FIRE_EFFECT_SIZE_X
+				DoOneFireDot
+			endr
+
+				lea		(128-FIRE_EFFECT_SIZE_X*2+128)(a2),a2
+				dbra	d7,.LoopY
+
+				bsr		DisplayBigRPUFOS
+				bsr		AddRPUFOSToBurn
+
+				move.l	NbLoop(pc),d0
+				cmp.l	#250,d0
+				beq		StartOutro
+				
+				rts
+
+				
+Burn_RPUFOS:
+; R
+				dc.b	126,126,126,126,000
+				dc.b	126,000,000,000,126
+				dc.b	126,000,000,000,126
+				dc.b	126,126,126,126,000
+				dc.b	126,000,000,000,126
+; P
+				dc.b	126,126,126,126,000
+				dc.b	126,000,000,000,126
+				dc.b	126,000,000,000,126
+				dc.b	126,126,126,126,000
+				dc.b	126,000,000,000,000
+; U
+				dc.b	126,000,000,000,126
+				dc.b	126,000,000,000,126
+				dc.b	126,000,000,000,126
+				dc.b	126,000,000,000,126
+				dc.b	000,126,126,126,000
+; F
+				dc.b	126,126,126,126,126
+				dc.b	126,000,000,000,000
+				dc.b	126,126,126,126,000
+				dc.b	126,000,000,000,000
+				dc.b	126,000,000,000,000
+; O
+				dc.b	000,126,126,126,000
+				dc.b	126,000,000,000,126
+				dc.b	126,000,000,000,126
+				dc.b	126,000,000,000,126
+				dc.b	000,126,126,126,000
+; S
+				dc.b	000,126,126,126,126
+				dc.b	126,000,000,000,000
+				dc.b	000,126,126,126,000
+				dc.b	000,000,000,000,126
+				dc.b	126,126,126,126,000
+
+	even
+	
+;=============================================================================
+AddRPUFOSToBurn:
+; Add things into the fire
+				move.l	NbLoop(pc),d0
+				cmp.l	#150,d0
+				bne		.AddNothing
+
+				lea		BufferData(pc),a0
+				lea		Burn_RPUFOS(pc),a1
+				add.l	#FIRE_EFFECT_SIZE_X*32+1,a0
+				
+				move.l	#6-1,d7
+.LoopLetters:
+				move.l	#5-1,d6
+.LoopLines:
+				move.l	#5-1,d5
+.LoopCol:
+				move.b	(a1)+,d0
+				beq.s	.NoSet
+				move.b	d0,FIRE_EFFECT_SIZE_X(a0)
+				move.b	d0,(a0)
+.NoSet:
+				add.l	#1,a0
+				dbra	d5,.LoopCol
+
+				add.l	#FIRE_EFFECT_SIZE_X*2-5,a0
+				dbra	d6,.LoopLines
+
+				sub.l	#FIRE_EFFECT_SIZE_X*2*5-5,a0
+				add.l	#2,a0
+				dbra	d7,.LoopLetters
+.AddNothing:
+				rts
+
+;=============================================================================
+DisplayBigRPUFOS:
+				move.l	NbLoop(pc),d0
+				cmp.l	#50,d0
+				bmi.s	.AddNothing
+				cmp.l	#150,d0
+				bge.s	.AddNothing
+
+; Add things into the fire
+				lea		ScreenBase(pc),a0
+				move.l	(a0),a0
+				add.l	#128*(FIRE_DECAL_POS_Y+64)+24,a0
+				lea		Burn_RPUFOS(pc),a1
+				
+				move.l	#6-1,d7
+.LoopLetters:
+				move.l	#5-1,d6
+.LoopLines:
+				move.l	#5-1,d5
+.LoopCol:
+				move.b	(a1)+,d0
+				beq.s	.NoSet
+				move.w	#$AAFF,128*0(a0)
+				move.w	#$AAFF,128*1(a0)
+				move.w	#$AAFF,128*2(a0)
+				move.w	#$AAFF,128*3(a0)
+.NoSet:
+				add.l	#2,a0
+				dbra	d5,.LoopCol
+				
+				add.l	#128*4-5*2,a0
+				dbra	d6,.LoopLines
+
+				sub.l	#128*4*5,a0
+				add.l	#14,a0
+				dbra	d7,.LoopLetters
+.AddNothing:
+				rts
+			
 ;=============================================================================
 ; Start outro
 ;=============================================================================
@@ -1007,7 +1291,7 @@ StartOutro:
 				bsr		CopyScreenMinusOneLine
 
 				lea		Outro02(pc),a0
-				lea		BufferData(pc),a1
+				lea		BufferData32k(pc),a1
 				bsr		zx0_decompress
 				rts
 
@@ -1023,7 +1307,7 @@ StartCharaFalling:
 				lea     NbLoop(pc),a1
 				move.l	#0,(a1)
 
-				lea		BufferData(pc),a1
+				lea		BufferData32k(pc),a1
 				add.l	#108/2+80*128,a1
 
 				move.l	#32-1,d7
@@ -1034,11 +1318,11 @@ StartCharaFalling:
 				lea		(128-4*5)(a1),a1
 				dbra	d7,.LoopClearChara
 
-				lea		BufferData(pc),a0
+				lea		BufferData32k(pc),a0
 				lea		$20000,a1
 				bsr		CopyScreen
 
-				lea		BufferData(pc),a0
+				lea		BufferData32k(pc),a0
 				add.l	#128,a0
 				lea		$28000+128,a1
 				bsr		CopyScreenMinusOneLine
@@ -1121,7 +1405,7 @@ SPEED_CHARA		equ 128
 				cmp.l	#255,d4
 				bge.s	.EndCharaFalling
 				
-				lea		BufferData(pc),a3
+				lea		BufferData32k(pc),a3
 				cmp.l	#0,(a4)
 				bne.s	.NotFirstChara
 				move.l	a0,a3
@@ -1259,7 +1543,7 @@ ReplaceOutroImage:
 
 				move.l	#$20000,a0
 				move.l	#$28000,a1
-				lea		BufferData(pc),a2
+				lea		BufferData32k(pc),a2
 
 				lea		ReplaceXOffset(pc),a3
 				move.l	(a3),d0
@@ -1531,6 +1815,9 @@ ImageDeformationTest:
 ; Swap buffer for double buffering
 ;=============================================================================
 SwapBuffer:
+				move.w	DoSwapBuffer(pc),d0
+				beq.s	.swapscreen2
+
 				lea		ScreenBase(pc),a0
 				lea		BufferNum(pc),a1
 				move.l	(a0),d0
@@ -1551,6 +1838,26 @@ SwapBuffer:
 				move.l	#$20000,(a0)
 				move.w	#1,(a1)
 .swapscreen2:
+				rts
+
+DeactivateSwapBuffer:
+				lea		DoSwapBuffer(pc),a1
+				move.w	#0,(a1)
+
+				lea		BufferNum(pc),a1
+				move.w	#0,(a1)
+
+				lea		ScreenBase(pc),a0
+				move.l	#$20000,(a0)
+				lea		ScreenBaseFront(pc),a0
+				move.l	#$28000,(a0)
+
+				move.b	#ScreenMode01,$18063			; Display screen 1
+				rts
+				
+ActivateSwapBuffer:
+				lea		DoSwapBuffer(pc),a1
+				move.w	#1,(a1)
 				rts
 				
 ;=============================================================================
@@ -1931,6 +2238,7 @@ ScreenBase:					dc.l	$20000
 ScreenBaseFront:			dc.l	$28000
 	even
 BufferNum:					dc.w	0
+DoSwapBuffer:				dc.w	1
 	even
 							dcb.b	512,0
 TopOfStack:
@@ -2000,17 +2308,21 @@ sin_table_8_232:
 	
 Font:						incbin 		"Data\Font8x8.bin"
 	even
-LogoRetroProg:				incbin 		"Data\Demo\LogoRPUFOS.bin.zx0"
-	even
-LogoEko:					incbin 		"Data\Demo\LogoEko.bin.zx0"
-	even
-Outro01:					incbin 		"Data\Demo\Outro_01.bin.zx0"
-	even
 Outro02:					incbin 		"Data\Demo\Outro_02.bin.zx0"
 	even
 OlipixChara:				incbin 		"Data\Demo\Olipix_Chara.bin"
 	even
+; Here start the 32K buffer for effects
+BufferData32k:
+LogoRetroProg:				incbin 		"Data\Demo\LogoRPUFOS.bin.zx0"
+	even
+LogoEko:					incbin 		"Data\Demo\LogoEko.bin.zx0"
+	even
+Fireplace:					incbin 		"Data\Demo\FirePlace.bin.zx0"
+	even
+Outro01:					incbin 		"Data\Demo\Outro_01.bin.zx0"
+	even
 BufferData:
-		dcb.b				32*1024,0
+		dcb.b				32*1024-(BufferData-LogoRetroProg),0
 
  
