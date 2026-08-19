@@ -23,16 +23,35 @@
 ScreenMode01	equ		%00001000
 ScreenMode02	equ		%10001000
 
+IsMinverva:		dc.w	0
+
 ; =============================================================================
 Start:
 				DBGENABLE
 			; Remove QDOS, mainly for double buffering as second screen adress contain QDOS data
                 trap    #0              			; Call QDOS for Superviseur mode
-				move.w	#$2700,sr					; Supervisor mode & no interrupt
+
+			; Check if minerva is used
+				moveq	#0,d0							; get rom version
+				trap	#1								; get rom version trap call
+				cmp.w	#$3130,d2						; check for JSROM
+				lea		IsMinverva(pc),a0
+				beq		.isjs
+.ismin:
+				move.w	#-1,(a0)						; -1 if minerva
+				jmp	.cont
+.isjs
+				move.w	#0,(a0)							; 0 if jsrom
+.cont:
+
+			; No interrupt
+				move.w	#$2700,sr
+
 			; Set my own stack
 				lea		TopOfStack(pc),a0
 				move.l	a0,sp
-				
+
+			
 			; Setup double buffering & first clear
 				move.b	#ScreenMode01,$18063
 				move.l	#$28000,a0
@@ -48,9 +67,16 @@ Start:
 				lea		VBLRouterList(pc),a0
 				lea		VBLInterrupt(pc),a1
 				move.l	a1,4(a0)					; Function to be called each frame with relocation.
+				
+				lea		IsMinverva(pc),a2
+				tst.w	(a2)
+				bne.s	.InitForMinerva
 				move.l	a0,$2803c					; write VBLANK pointer to JSROM location
+				bra.s	.SetupIntDone
+.InitForMinerva:
+				move.l	a0,$3803c					; write VBLANK pointer to Minerva location
+.SetupIntDone:
 				move.w	#$2100,sr					; Enable interrupts for Vbl, keyboard & sound (as well as microdrive & rs232)
-				; TODO - Specific code for minerva support
 
 			; Frame counter (real display)
 				lea     NbLoop(pc),a0
@@ -61,19 +87,19 @@ Start:
 				lea		Music_Demoscene(pc),a0
 				bsr		StartMusic
 
-				;bsr		StartLogoEko
+				bsr		StartLogoEko
 
-				bsr		StartFireEffect
+				;bsr		StartLogoRetroProg
+				;bsr		StartFireEffect
 				;bsr		StartBobShading
 				;bsr			StartPlasma
 				;bsr		StartOutro
 				;bsr		StartCharaFalling
 				;bsr		Start3D
+				;bsr			StartTextAnimation
 			
 MainLoop:
-			; WaitVBlank
 				bsr		WaitVBlank
-				;bra		MainLoop
 
 				bsr		SwapBuffer
 
@@ -128,6 +154,9 @@ MainLoop:
 				cmp.l	#STATUS_DEMO_OUTRO_3D,d0
 				beq.s   .CaseOutro3D
 				
+				cmp.l	#STATUS_DEMO_TEXT_ANIM,d0
+				beq.s	.CaseTextAnimation
+				
 				bra.s   .EndSwitch
 
 .CaseLogoEko:
@@ -135,8 +164,6 @@ MainLoop:
 				bra.s   .EndSwitch
 				
 .CaseLogoRetroProg:
-				move.l	#201,d0
-				bsr		WaitNbVBlank
 				bsr		ProcessEraseScreen
 				bsr		StartPlasma
 				bra.s   .EndSwitch
@@ -173,12 +200,21 @@ MainLoop:
 				bra.s   .EndSwitch
 
 .CaseOutro3D:
+				cmp.l	#800,d6
+				bmi		.NotEndOutro3D
+				bsr		StartTextAnimation
+				bra.s   .EndSwitch
+
+.NotEndOutro3D:
 				bsr		DrawRedLine
 				bsr		Draw3D
 				bra.s   .EndSwitch
-				
+
+.CaseTextAnimation:
+				bsr		DisplayTextAnim
+				bra.s   .EndSwitch
 				nop
-.EndSwitch:				
+.EndSwitch:
 
 				bra		MainLoop
 
@@ -198,6 +234,7 @@ STATUS_DEMO_LOGO_EKO			equ			6
 STATUS_DEMO_LOGO_RETRO_PROG		equ			7
 STATUS_DEMO_BOB_SHADING			equ			8
 STATUS_DEMO_FIRE				equ			9
+STATUS_DEMO_TEXT_ANIM			equ			10
 
 	even
 DemoStatus:			dc.l	STATUS_DEMO_OUTRO_01
@@ -373,55 +410,109 @@ StartLogoEko:
 				move.l	#STATUS_DEMO_LOGO_EKO,(a0)
 
 
-				move.l	#200,d0
+				move.l	#300,d0
 				bsr		WaitNbVBlank
 
 				bsr		ProcessEraseScreen
-
-				lea     NbLoop(pc),a0
-                move.l  #0,(a0)
-				lea     NbVbl(pc),a0
-                move.l  #0,(a0)
-
-				lea		Text_Presents(pc),a0
-				lea		CurrentTextAnim(pc),a1
-				move.l	a0,(a1)
-
-				bsr		StartNextTextAnimation
 				
+				bsr		StartFireEffect
+
+			
 				rts
 
 ;=============================================================================
 ; Process Logo Eko
 ;=============================================================================
 ProcessLogoEko:
-				bsr		DisplayTextAnim
 				rts
 				
 							even
-Text_Presents:				dc.l		128-18*8/2, 50
-							dc.b		"EKO SYSTEM IS BACK",0
-							even
-Text_ADemo:					dc.l		128-11*8/2, 50+8*2
-							dc.b		"WITH A DEMO",0
-							even
-Text_MadeFor:				dc.l		128-12*8/2, 50+8*4
-							dc.b		"MADE FOR THE",0
-							even
-Text_Retro01:				dc.l		128-24*8/2, 50+8*6
-							dc.b		"RETRO PROGRAMMERS UNITED",0
-							even
-Text_Retro02:				dc.l		128-19*8/2, 50+8*8
-							dc.b		"FOR OBSCURE SYSTEMS",0
-							even
-Text_GameJam:				dc.l		128-20*8/2, 50+8*10
-							dc.b		"PROGRAMMING JAM 2026",0
-							even
-Text_QL:					dc.l		128-15*8/2, 50+8*12
-							dc.b		"ON SINCLAIR QL",0 ; Last text to be display
-							even
-							dc.l		-1
-							even
+Texts_Animation:			
+	dc.l		128-26*8/2, 50+8*0
+	dc.b		"THIS DEMO WAS MADE FOR THE",0
+	even
+
+	dc.l		128-24*8/2, 50+8*4
+	dc.b		"RETRO PROGRAMMERS UNITED",0
+	even
+
+	dc.l		128-19*8/2, 50+8*6
+	dc.b		"FOR OBSCURE SYSTEMS",0
+	even
+
+	dc.l		128-20*8/2, 50+8*10
+	dc.b		"PROGRAMMING JAM 2026",0
+	even
+
+	dc.l		128-14*8/2, 50+8*12
+	dc.b		"ON SINCLAIR QL",0 ; Last text to be display
+
+	even
+	dc.l		-1
+	even
+
+	dc.l		128-28*8/2, 50
+	dc.b		"CREDITS FOR THIS LITTLE DEMO",0
+	even
+
+	dc.l		128-10*8/2, 50+8*8
+	dc.b		"CODE - JGL",0
+	even
+
+	dc.l		128-27*8/2, 50+8*12
+	dc.b		"ART - JGL, HELPED BY GEMINI",0
+	even
+
+	dc.l		128-29*8/2, 50+8*16
+	dc.b		"MUSIC - GEMINI, HELPED BY JGL",0
+	even
+
+	dc.l		-1
+	even
+	
+	dc.l		128-9*8/2, 50+8*0
+	dc.b		"THANKS TO",0
+	even
+
+	dc.l		128-30*8/2, 50+8*6
+	dc.b		"OLIPIX - CREATOR OF THE RPUFOS",0
+	even
+
+	dc.l		128-31*8/2, 50+8*8
+	dc.b		"!CHECK OUT HIS YOUTUBE CHANNEL!",0
+	even
+
+	dc.l		128-30*8/2, 50+8*12
+	dc.b		"SPKR/SMFX FOR THE QLSYS SAMPLE",0
+	even
+
+	dc.l		128-31*8/2, 50+8*16
+	dc.b		"OTHERS RETRO PROGRAMMERS UNITED",0
+	even
+
+	even
+	dc.l		-1
+	even
+
+	dc.l		128-23*8/2, 50+8*0
+	dc.b		"AND FINALY GREETINGS TO",0
+	even
+	
+	dc.l		128-6*8/2, 50+8*6
+	dc.b		"MAXOUT",0
+	even
+
+	dc.l		128-22*8/2, 50+8*8
+	dc.b		"EKO IS HERE AGAIN GUY!",0
+	even
+
+	dc.l		128-15*8/2, 50+8*14
+	dc.b		"!!! BYE BYE !!!",0
+	even
+
+	even
+	dc.l		-2
+	even
 
 	RSRESET
 STextAnim_TextAdr:			RS.L 1		; Text Adr
@@ -436,20 +527,47 @@ TextAnimation:				dcb.b    STextAnim_SIZEOF,0
 CurrentTextAnim:			dc.l	0
 
 ;=============================================================================
+; Start text animation
+;=============================================================================
+StartTextAnimation:
+				bsr		ProcessEraseScreen
+
+				lea		DemoStatus(pc),a0
+				move.l	#STATUS_DEMO_TEXT_ANIM,(a0)
+
+				lea     NbLoop(pc),a0
+                move.l  #0,(a0)
+				lea     NbVbl(pc),a0
+                move.l  #0,(a0)
+
+				lea		Texts_Animation(pc),a0
+				lea		CurrentTextAnim(pc),a1
+				move.l	a0,(a1)
+
+				bsr		StartNextTextAnimation
+				rts
+				
+;=============================================================================
 ; Start Next text animation
 ; a1 = Coord & Text Adr
 ;=============================================================================
 StartNextTextAnimation:
 				lea		CurrentTextAnim(pc),a2
 				move.l	(a2),a0
+
+				cmp.l	#-2,(a0)
+				beq.s	.Restart
+
 				cmp.l	#-1,(a0)
 				bne.s	.SetNext
 
-				move.l	#100,d0
+				move.l	#200,d0
 				bsr		WaitNbVBlank
+				bsr		ProcessEraseScreen
 
-				bsr		StartLogoRetroProg
-				rts
+				lea		CurrentTextAnim(pc),a2
+				move.l	(a2),a0
+				add.l	#4,a0
 .SetNext:
 
 				lea		TextAnimation(pc),a1
@@ -471,6 +589,12 @@ StartNextTextAnimation:
 				and.l	#$FFFFFFFE,d0			; make it even
 				
 				move.l	d0,(a2)
+				rts
+
+.Restart:
+				move.l	#20000,d0
+				bsr		WaitNbVBlank
+				bsr		StartTextAnimation
 				rts
 
 SinTable16:
@@ -566,6 +690,8 @@ DisplayTextAnim:
 ; Start Logo Retro prog
 ;=============================================================================
 StartLogoRetroProg:
+				bsr		ProcessEraseScreen
+
 				lea		$20000,a0
 				move.l	#$AAFFAAFF,d0
 				;bsr		ClearScreenMinusOneLine
@@ -585,6 +711,9 @@ StartLogoRetroProg:
 				lea		DemoStatus(pc),a0
 				move.l	#STATUS_DEMO_LOGO_RETRO_PROG,(a0)
 				
+				move.l	#300,d0
+				bsr		WaitNbVBlank
+			
 				rts
 
 	even
@@ -828,7 +957,7 @@ StartBobShading:
 				move.l	#0,d0
 				;move.l	#$AAFFAAFF,d0
 				bsr		ClearScreenMinusOneLine
-				
+
 				lea		Current_Bob(pc),a0
 				lea		Bob_01(pc),a1
 				move.l	a1,(a0)
@@ -993,7 +1122,7 @@ ProcessBobShading:
 				bsr		ProcessEraseScreen
 				rts
 .EndBob:
-				bsr		StartFireEffect
+				bsr		StartOutro
 				rts
 
 ;=============================================================================
@@ -1047,6 +1176,13 @@ StartFireEffect:
 				move.b	d0,(a0)+						; Sub value for dot fire
 				dbra	d7,.LoopRandom
 
+				lea		CurrentBurnText(pc),a0
+				lea		Burn_Text(pc),a1
+				move.l	a1,(a0)
+				
+				lea		BurnTextTimer(pc),a0
+				move.l	#0,(a0)
+				
 				rts
 
 FIRE_EFFECT_SIZE_X		equ		(4*42)/4
@@ -1110,10 +1246,13 @@ FireSeed:	dc.l		$12345678
  
 ProcessFireEffect:
 ; Process fire
-	;DBGBREAK
+				lea		BurnTextTimer(pc),a0
+				lea		VblNbFrameLastLoopSaved(pc),a1
+				move.l	(a1),d0
+				add.l	d0,(a0)
+
 				move.l	ScreenBase(pc),a2
 				add.l	#64-FIRE_EFFECT_SIZE_X,a2
-				;add.l	#(256-FIRE_EFFECT_SIZE_Y-2)*128,a2
 				add.l	#128*FIRE_DECAL_POS_Y,a2
 				move.l	NbLoop(pc),d0
 				btst	#1,d0
@@ -1147,68 +1286,101 @@ ProcessFireEffect:
 
 				bsr		DisplayBigRPUFOS
 				bsr		AddRPUFOSToBurn
-
-				move.l	NbLoop(pc),d0
-				cmp.l	#250,d0
-				beq		StartOutro
-				
 				rts
 
-				
-Burn_RPUFOS:
-; R
-				dc.b	126,126,126,126,000
-				dc.b	126,000,000,000,126
-				dc.b	126,000,000,000,126
-				dc.b	126,126,126,126,000
-				dc.b	126,000,000,000,126
-; P
-				dc.b	126,126,126,126,000
-				dc.b	126,000,000,000,126
-				dc.b	126,000,000,000,126
-				dc.b	126,126,126,126,000
-				dc.b	126,000,000,000,000
-; U
-				dc.b	126,000,000,000,126
-				dc.b	126,000,000,000,126
-				dc.b	126,000,000,000,126
-				dc.b	126,000,000,000,126
-				dc.b	000,126,126,126,000
-; F
-				dc.b	126,126,126,126,126
-				dc.b	126,000,000,000,000
-				dc.b	126,126,126,126,000
-				dc.b	126,000,000,000,000
-				dc.b	126,000,000,000,000
-; O
-				dc.b	000,126,126,126,000
-				dc.b	126,000,000,000,126
-				dc.b	126,000,000,000,126
-				dc.b	126,000,000,000,126
-				dc.b	000,126,126,126,000
-; S
-				dc.b	000,126,126,126,126
-				dc.b	126,000,000,000,000
-				dc.b	000,126,126,126,000
-				dc.b	000,000,000,000,126
-				dc.b	126,126,126,126,000
+Burn_Text:
+					dc.b	1,24,1
+					dc.b	" "
+					dc.b	1,24,1
+					dc.b	" "
+					
+					dc.b	3,22,11
+					dc.b	"EKO"
 
+					dc.b	2,28,14
+					dc.b	"IS"
+
+					dc.b	4,14,7
+					dc.b	"BACK"
+
+					dc.b	5,8,4
+					dc.b	"AFTER"
+
+					dc.b	4,14,7
+					dc.b	"MORE"
+
+					dc.b	4,14,7
+					dc.b	"THAN"
+
+					dc.b	2,28,14
+					dc.b	"30"
+
+					dc.b	5,8,4
+					dc.b	"YEARS"
+
+					dc.b	3,22,11
+					dc.b	"FOR"
+
+					dc.b	3,22,11
+					dc.b	"THE"
+
+					dc.b	6,0,0
+					dc.b	"RPUFOS"
+
+					dc.b	4,14,7
+					dc.b	"2026"
+
+					dc.b	3,22,11
+					dc.b	"JAM"
+
+					dc.b	2,28,14
+					dc.b	"ON"
+
+					dc.b	2,28,14
+					dc.b	"QL"
+					dc.b	0
 	even
+CurrentBurnText:	dc.l	0		; Adr 
+BurnTextTimer:		dc.l	0
 	
 ;=============================================================================
 AddRPUFOSToBurn:
 ; Add things into the fire
-				move.l	NbLoop(pc),d0
+				move.l	BurnTextTimer(pc),d0
 				cmp.l	#150,d0
-				bne		.AddNothing
+				bmi		.AddNothing
 
 				lea		BufferData(pc),a0
-				lea		Burn_RPUFOS(pc),a1
 				add.l	#FIRE_EFFECT_SIZE_X*32+1,a0
 				
-				move.l	#6-1,d7
+				lea		CurrentBurnText(pc),a2
+				move.l	(a2),a2
+				tst.b	(a2)
+				bne.s	.NotEndOfBurnText
+				beq		StartLogoRetroProg
+				rts
+.NotEndOfBurnText:
+				moveq	#0,d7
+				move.b	(a2),d7
+				moveq	#0,d0
+				move.b	2(a2),d0
+				add.l	d0,a0
+				add.l	#3,a2
+				sub.b	#1,d7
 .LoopLetters:
 				move.l	#5-1,d6
+				moveq	#0,d4
+				move.b	(a2)+,d4
+				cmp.b	#" ",d4
+				beq.s	.GoToNext
+				sub.w	#48,d4			; "0"
+				cmp.w	#10,d4
+				bmi.s	.Number
+				sub.w	#(65-48)-10,d4			; "A" just after "9" in our "font"
+.Number:
+				lsl.w	#5,d4
+				lea		Font5x5(pc),a1
+				add.w	d4,a1
 .LoopLines:
 				move.l	#5-1,d5
 .LoopCol:
@@ -1226,25 +1398,57 @@ AddRPUFOSToBurn:
 				sub.l	#FIRE_EFFECT_SIZE_X*2*5-5,a0
 				add.l	#2,a0
 				dbra	d7,.LoopLetters
+				
+.GoToNext:
+				lea		CurrentBurnText(pc),a0
+				move.l	a2,(a0)
+				lea	BurnTextTimer(pc),a0
+				move.l	#0,(a0)
+
 .AddNothing:
 				rts
 
 ;=============================================================================
 DisplayBigRPUFOS:
-				move.l	NbLoop(pc),d0
+				move.l	BurnTextTimer(pc),d0
 				cmp.l	#50,d0
-				bmi.s	.AddNothing
+				bmi		.AddNothing
 				cmp.l	#150,d0
-				bge.s	.AddNothing
+				bge		.AddNothing
 
 ; Add things into the fire
 				lea		ScreenBase(pc),a0
 				move.l	(a0),a0
 				add.l	#128*(FIRE_DECAL_POS_Y+64)+24,a0
-				lea		Burn_RPUFOS(pc),a1
+				lea		Font5x5(pc),a1
 				
-				move.l	#6-1,d7
+				lea		CurrentBurnText(pc),a2
+				move.l	(a2),a2
+				tst.b	(a2)
+				bne.s	.NotEndOfBurnText
+				rts
+.NotEndOfBurnText:
+				moveq	#0,d7
+				move.b	(a2),d7
+				moveq	#0,d0
+				move.b	1(a2),d0
+				add.l	d0,a0
+				add.l	#3,a2
+				sub.b	#1,d7
 .LoopLetters:
+				moveq	#0,d4
+				move.b	(a2)+,d4
+				cmp.b	#" ",d4
+				beq		.AddNothing
+				sub.w	#48,d4			; "0"
+				cmp.w	#10,d4
+				bmi.s	.Number
+				sub.w	#(65-48)-10,d4			; "A" just after "9" in our "font"
+.Number:
+				lsl.w	#5,d4
+				lea		Font5x5(pc),a1
+				add.w	d4,a1
+
 				move.l	#5-1,d6
 .LoopLines:
 				move.l	#5-1,d5
@@ -2014,13 +2218,11 @@ NbVbl:						dc.l	0					; Nb Vbl (50 FPS) triggered (for real time counter)
 VblLastLoop:				dc.l	0					; Num of the last frame that triggered a Vbl for the main process
 VblInt:						dc.l	0					; 0 if we must wait, 1 if vbl int occurs
 
-	dcb.w	50,0
 VBLRouterList:				dc.l	0,VBLInterrupt		; !!! Must be relocated !!!
 	even
 ;=============================================================================
 VBLInterrupt:
 				movem.l d0-a6,-(sp)
-
 				bsr		PlayMusic
 				
 			; Clean unused stuff around function ptr for clearer screen
@@ -2304,8 +2506,8 @@ sin_table_8_232:
     dc.b 78,80,81,82,83,85,86,87,89,90,91,93,94,95,97,98
     dc.b 100,101,102,104,105,106,108,109,110,112,113,115,116,117,119,120
 	
+
 	even
-	
 Font:						incbin 		"Data\Font8x8.bin"
 	even
 Outro02:					incbin 		"Data\Demo\Outro_02.bin.zx0"
@@ -2322,7 +2524,20 @@ Fireplace:					incbin 		"Data\Demo\FirePlace.bin.zx0"
 	even
 Outro01:					incbin 		"Data\Demo\Outro_01.bin.zx0"
 	even
+Font5x5:
+	include "Font5x5.asm"
+	even
 BufferData:
 		dcb.b				32*1024-(BufferData-LogoRetroProg),0
+BufferDataEnd:
 
- 
+SIZE_BUFFER_DATA equ (BufferDataEnd-BufferData)
+		
+
+MIN_SIZE        equ 16*1024
+
+                iflt SIZE_BUFFER_DATA-MIN_SIZE
+                fail "Error, buffer data is too small !!!"
+				printt "BufferData size is : "
+				printv SIZE_BUFFER_DATA
+                endc
