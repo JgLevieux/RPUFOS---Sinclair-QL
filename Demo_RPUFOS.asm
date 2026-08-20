@@ -103,7 +103,7 @@ MainLoop:
 
 				bsr		SwapBuffer
 
-				bsr		DrawVblTimer
+				;bsr		DrawVblTimer
 				
 				;bsr 	ReadKeyboard
 
@@ -470,23 +470,23 @@ Texts_Animation:
 	dc.l		-1
 	even
 	
-	dc.l		128-9*8/2, 50+8*0
-	dc.b		"THANKS TO",0
+	dc.l		128-23*8/2, 50+8*0
+	dc.b		"BIG THANKS TO",0
 	even
 
-	dc.l		128-30*8/2, 50+8*6
-	dc.b		"OLIPIX - CREATOR OF THE RPUFOS",0
+	dc.l		128-31*8/2, 50+8*6
+	dc.b		"CHIBIAKUMAS & HIS QL DEVTOOLKIT",0
 	even
 
-	dc.l		128-31*8/2, 50+8*8
-	dc.b		"!CHECK OUT HIS YOUTUBE CHANNEL!",0
+	dc.l		128-25*8/2, 50+8*10
+	dc.b		"TERDINA FOR HIS QEMULATOR",0
 	even
 
-	dc.l		128-30*8/2, 50+8*12
+	dc.l		128-30*8/2, 50+8*14
 	dc.b		"SPKR/SMFX FOR THE QLSYS SAMPLE",0
 	even
 
-	dc.l		128-31*8/2, 50+8*16
+	dc.l		128-31*8/2, 50+8*18
 	dc.b		"OTHERS RETRO PROGRAMMERS UNITED",0
 	even
 
@@ -495,18 +495,24 @@ Texts_Animation:
 	even
 
 	dc.l		128-23*8/2, 50+8*0
-	dc.b		"AND FINALY GREETINGS TO",0
-	even
-	
-	dc.l		128-6*8/2, 50+8*6
-	dc.b		"MAXOUT",0
+	dc.b		"AND TO",0
 	even
 
-	dc.l		128-22*8/2, 50+8*8
-	dc.b		"EKO IS HERE AGAIN GUY!",0
+	dc.l		128-31*8/2, 50+8*6
+	dc.b		"MAXOUT, THANKS FOR ALL AND MORE",0
 	even
 
-	dc.l		128-15*8/2, 50+8*14
+	dc.l		128-22*8/2, 50+8*10
+	dc.b		"AND LAST BUT NOT LEAST",0
+	even
+	dc.l		128-30*8/2, 50+8*12
+	dc.b		"OLIPIX - CREATOR OF THE RPUFOS",0
+	even
+	dc.l		128-31*8/2, 50+8*14
+	dc.b		"!CHECK OUT HIS YOUTUBE CHANNEL!",0
+	even
+
+	dc.l		128-15*8/2, 50+8*20
 	dc.b		"!!! BYE BYE !!!",0
 	even
 
@@ -1302,21 +1308,6 @@ Burn_Text:
 
 					dc.b	4,14,7
 					dc.b	"BACK"
-
-					dc.b	5,8,4
-					dc.b	"AFTER"
-
-					dc.b	4,14,7
-					dc.b	"MORE"
-
-					dc.b	4,14,7
-					dc.b	"THAN"
-
-					dc.b	2,28,14
-					dc.b	"30"
-
-					dc.b	5,8,4
-					dc.b	"YEARS"
 
 					dc.b	3,22,11
 					dc.b	"FOR"
@@ -2220,6 +2211,8 @@ VblInt:						dc.l	0					; 0 if we must wait, 1 if vbl int occurs
 
 VBLRouterList:				dc.l	0,VBLInterrupt		; !!! Must be relocated !!!
 	even
+	dcb.l	14
+	even
 ;=============================================================================
 VBLInterrupt:
 				movem.l d0-a6,-(sp)
@@ -2230,6 +2223,28 @@ VBLInterrupt:
 				moveq	#0,d0
 				move.l	d0,$2C(a0)
 				move.l	d0,$2C+4(a0)
+				
+				;DBGBREAK
+			; Stop possible flash bit activated by VblInt function adress
+				moveq	#0,d1
+				move.w	$3C+2(a0),d0
+				btst	#16,d0
+				beq.s	.F3
+				bset	#16,d1
+.F3:
+				btst	#14,d0
+				beq.s	.F2
+				bset	#14,d1
+.F2:
+				btst	#12,d0
+				beq.s	.F1
+				bset	#12,d1
+.F1:
+				btst	#10,d0
+				beq.s	.F0
+				bset	#10,d1
+.F0:
+				move.w	d1,$3C+4(a0)
 				
 			; Vbl counter
 				lea		VblNbFrameLastLoop(pc),a0
