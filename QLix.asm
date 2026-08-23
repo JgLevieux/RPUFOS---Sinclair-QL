@@ -184,7 +184,7 @@ MainLoop:
 				nop
 .EndSwitch:				
 
-				bsr		DrawVblTimer
+				;bsr		DrawVblTimer
 
 			ifd TIMER_MODE
 				DisplayOffForProfiling

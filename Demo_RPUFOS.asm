@@ -2542,6 +2542,7 @@ Outro01:					incbin 		"Data\Demo\Outro_01.bin.zx0"
 Font5x5:
 	include "Font5x5.asm"
 	even
+	even
 BufferData:
 		dcb.b				32*1024-(BufferData-LogoRetroProg),0
 BufferDataEnd:
