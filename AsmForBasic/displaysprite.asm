@@ -6,21 +6,37 @@
 
 ;210 MODE 8
 ;220 SCALE 256, 0, 0
+;230 PAPER #1, 5
+;240 CLS #1
 
-;300 sprite=RESPR(1280)
-;310 LBYTES mdv1_ghostred_bin,sprite
+;300 sprite16x16=RESPR(256)
+;301 LBYTES mdv1_16x16_bin,sprite16x16
 
-;350 displaysprite16x16=RESPR(512)
-;370 LBYTES win1_displaysprite16x16_bin,displaysprite16x16
-;380 CALL displaysprite16x16, 60, 64, sprite
-;381 CALL displaysprite16x16, 61, 64+16*1, sprite
-;382 CALL displaysprite16x16, 62, 64+16*2, sprite
-;383 CALL displaysprite16x16, 63, 64+16*3, sprite
+;302 sprite24x24=RESPR(576)
+;303 LBYTES mdv1_24x24_bin,sprite24x24
 
-                movem.l d1-d7/a0-a1,-(sp)
+;304 sprite32x32=RESPR(1024)
+;305 LBYTES mdv1_32x32_bin,sprite32x32
+
+;306 sprite48x48=RESPR(2304)
+;307 LBYTES mdv1_48x48_bin,sprite48x48
+
+;308 sprite64x64=RESPR(4096)
+;309 LBYTES mdv1_64x64_bin,sprite64x64
+
+;350 displaysprite=RESPR(512)
+;360 REM LBYTES mdv1_displaysprite_bin,displaysprite
+;370 LBYTES mdv1_displaysprite_bin,displaysprite
+;400 CALL displaysprite, 64, 64, sprite16x16, 16, 16
+;410 CALL displaysprite, 64, 64+16, sprite24x24, 24, 24
+;420 CALL displaysprite, 64, 64+16+24, sprite32x32, 32, 32
+;430 CALL displaysprite, 64, 64+16+24+32, sprite48x48, 48, 48
+;440 CALL displaysprite, 64, 64+16+24+32+48, sprite64x64, 64, 64
+
+
+                movem.l d1-d7/a0-a2,-(sp)
 DisplaySpriteMasked:
 				move.l	#$20000,a0
-				move.l	d1,d4
 
 			; Screen adr
 				lsr.l	#2,d1			; /4, 4 pixels per word.
@@ -37,26 +53,24 @@ DisplaySpriteMasked:
 				move.l	a1,a2
 				add.l	d6,a2			; a2 = mask adress
 
-				move.w  #118,d2
-                
 				sub.l	#1,d5
 .LoopY:
 				move.l	d4,d7
-				lsr.l	#1,d7			; X/2
+				lsr.l	#2,d7			; X/4 : 4 pixels at a time for each loop (with words)
 				sub.l	#1,d7
 				move.l	#128,d1			; To add at the end of the line
 .LoopX:
-				move.l  (a0),d0
-				and.l   (a2)+,d0
-				or.l    (a1)+,d0
-				move.l  d0,(a0)+
+				move.w  (a0),d0
+				and.w   (a2)+,d0
+				or.w    (a1)+,d0
+				move.w  d0,(a0)+
 				sub.l	#2,d1			; 2 words less to add at the end of the line
 				dbra	d7,.LoopX
 				
 				add.l	d1,a0
 				dbra	d5,.LoopY
 
-                movem.l (sp)+,d1-d7/a0-a1
+                movem.l (sp)+,d1-d7/a0-a2
 
 				moveq	#0,d0   			; Return no error to Basic
 				rts
