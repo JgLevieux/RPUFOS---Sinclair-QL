@@ -1,3 +1,4 @@
-100 start=RESPR(45000)
-200 LBYTES mdv1_prog_bin,start
-300 CALL start
+
+1000 start=RESPR(65000)
+2000 LBYTES mdv1_prog_bin,start
+3000 CALL start
