@@ -92,11 +92,11 @@ MainLoop:
 				
 				bsr 	ReadKeyboard
 
+				lea		Keyboard(pc),a1
 				btst	#Keyboard01_ESC,1(a1)
 				beq.s	.NoESC
 				DBGBREAK
 .NoESC:
-				lea		Keyboard(pc),a1
 				move.b	1(a1),d4					; d4 = bits clavier
 				btst	#Keyboard01_Enter,d4		; Press space to move while tracing
 				beq.s	.nobreakpoint
@@ -116,43 +116,78 @@ MainLoop:
                 rts
 
 
-SCROLL_X_SIZE	equ		128/8
-SCROLL_Y_SIZE	equ		200/8
+;https://jenesuis.net/images_site/jeux/msx/knightmare/
+SCROLL_X_SIZE	equ		(96)
+SCROLL_Y_SIZE	equ		(192)
+
+ScrollYPos:		dc.l	8*2
+
+ScrollMap:
+		dc.b	 1, 0, 0, 3, 0, 1, 1, 0, 0, 1, 0, 2
+		dc.b	 0, 3, 0, 1, 1, 0, 3, 1, 0, 2, 0, 1
+		dc.b	 1, 0, 3, 1, 0, 1, 0, 1, 0, 0, 3, 1
+		dc.b	 1, 0, 0, 1, 0, 2, 1, 2, 1, 1, 0, 2
+		dc.b	 4, 5, 4, 5, 9,10,11,12, 4, 5, 4, 5
+		dc.b	 6, 6, 6, 6, 9,10,11,12, 6, 6, 6, 6
+		dc.b	 6, 6, 6, 6, 9,10,11,12, 6, 6, 6, 6
+		dc.b	 6, 6, 6, 6, 9,10,11,12, 6, 6, 6, 6
+		dc.b	 7, 8, 7, 8, 9,10,11,12, 7, 8, 7, 8
+		dc.b	 1, 0, 0, 3, 0, 1, 1, 0, 0, 1, 0, 2
+		dc.b	 0, 3, 0, 1, 1, 0, 3, 1, 0, 2, 0, 1
+		dc.b	 1, 0, 3, 1, 0, 1, 0, 1, 0, 0, 3, 1
+		dc.b	 1, 0, 0, 1, 0, 2, 1, 2, 1, 1, 0, 2
+		dc.b	 1, 0, 0, 3, 0, 1, 1, 0, 0, 1, 0, 2
+		dc.b	 0, 3, 0, 1, 1, 0, 3, 1, 0, 2, 0, 1
+		dc.b	 1, 0, 3, 1, 0, 1, 0, 1, 0, 0, 3, 1
+		dc.b	 1, 0, 0, 1, 0, 2, 1, 2, 1, 1, 0, 2
+		dc.b	 1, 0, 0, 3, 0, 1, 1, 0, 0, 1, 0, 2
+		dc.b	 0, 3, 0, 1, 1, 0, 3, 1, 0, 2, 0, 1
+		dc.b	 1, 0, 3, 1, 0, 1, 0, 1, 0, 0, 3, 1
+		dc.b	 1, 0, 0, 1, 0, 2, 1, 2, 1, 1, 0, 2
+		dc.b	 1, 0, 0, 3, 0, 1, 1, 0, 0, 1, 0, 2
+		dc.b	 0, 3, 0, 1, 1, 0, 3, 1, 0, 2, 0, 1
+		dc.b	 1, 0, 3, 1, 0, 1, 0, 1, 0, 0, 3, 1
+		dc.b	 1, 0, 0, 1, 0, 2, 1, 2, 1, 1, 0, 2
+		dc.b	 1, 0, 0, 3, 0, 1, 1, 0, 0, 1, 0, 2
+		dc.b	 0, 3, 0, 1, 1, 0, 3, 1, 0, 2, 0, 1
+		dc.b	 1, 0, 3, 1, 0, 1, 0, 1, 0, 0, 3, 1
+		dc.b	 1, 0, 0, 1, 0, 2, 1, 2, 1, 1, 0, 2
 
 ;=============================================================================
 ; Start Logo Eko
 ;=============================================================================
 StartScrolling:
 				lea		$20000,a0
-				move.l	#$AAFFAAFF,d0
+				;move.l	#$AAFFAAFF,d0
 				move.l	#0,d0
 				bsr		ClearScreenMinusOneLine
 
 				lea		$28000,a0
-				move.l	#$AAFFAAFF,d0
+				;move.l	#$AAFFAAFF,d0
 				move.l	#0,d0
 				bsr		ClearScreenMinusOneLine
 
 				lea		BufferData(pc),a0
 				lea		Tiles(pc),a1
+				lea		ScrollMap(pc),a2
 
-				move.l	#SCROLL_Y_SIZE-1,d7
+				move.l	#(SCROLL_Y_SIZE/8)+2-1,d7
 .LoopY:
-				move.l	#SCROLL_X_SIZE-1,d6
+				move.l	#SCROLL_X_SIZE/8-1,d6
 .LoopX:
 				lea		Tiles(pc),a1
-				bsr		GetRandom
-				and.l	#3,d0
+				moveq	#0,d0
+				move.b	(a2)+,d0
 				lsl.l	#5,d0
-				;add.l	d0,a1
+				add.l	d0,a1
 .y set 0
 			rept	8
 				move.l	(a1)+,.y(a0)
-.y set .y+(SCROLL_X_SIZE*8/2)
+.y set .y+(SCROLL_X_SIZE/2)
 			endr
 				lea		4(a0),a0
 				dbra	d6,.LoopX
-				lea		(SCROLL_X_SIZE*8/2)*7(a0),a0
+				lea		(SCROLL_X_SIZE/2)*7(a0),a0
 				dbra	d7,.LoopY
 
 				rts
@@ -160,34 +195,43 @@ StartScrolling:
 ;=============================================================================
 ; Process Scrolling
 ;=============================================================================
-;https://jenesuis.net/images_site/jeux/msx/knightmare/
 ProcessScrolling:
 				lea		BufferData(pc),a0
 
 				lea		ScreenBase(pc),a1
 				move.l	(a1),a1
-				add.l	#32,a1
+				add.l	#64-SCROLL_X_SIZE/4,a1
+                add.l	#128*(128)-128*(SCROLL_Y_SIZE/2),a1
 				
-				lea		NbLoop(pc),a2
-				move.l	(a2),d0
+				lea		ScrollYPos(pc),a3
+				lea		Keyboard(pc),a2
+				btst	#Keyboard01_Up,1(a2)
+				beq.s	.NoUp
+				add.l	#1,(a3)
+.NoUp:
+				btst	#Keyboard01_Down,1(a2)
+				beq.s	.NoDown
+				sub.l	#1,(a3)
+.NoDown:
+				move.l	(a3),d0
 				and.l	#7,d0
-				lsl.l	#6,d0
+				move.l	d0,d1
+				lsl.l	#4,d0
+				lsl.l	#5,d1
 				add.l	d0,a0
-				add.l	#64*8,a0
-				
-                add.l	#128*32,a1
-                move.l	#SCROLL_Y_SIZE-1,d7
+				add.l	d1,a0
+
 .loop:
-	rept 200-16
+	rept SCROLL_Y_SIZE
                 movem.l (a0)+,d0-d6/a2-a6
 				movem.l	d0-d6/a2-a6,(a1)
 				lea		(12*4)(a1),a1
 
-                movem.l (a0)+,d0-d3
-				movem.l	d0-d3,(a1)
-				lea		(4*4+128-16*4)(a1),a1
+                ;movem.l (a0)+,d0-d3
+				;movem.l	d0-d3,(a1)
+
+				lea		(128-12*4)(a1),a1
 	endr
-                ;dbf     d7,.loop
 
 				rts
 
@@ -504,11 +548,11 @@ DrawVblTimer:
 				bgt		.SupZero
 				move.l	#0,d0
 .SupZero:
-				lsr.l	#5,d0				; 1520/32 = 48
+				lsr.l	#4,d0				; 1520/32 = 48
 
-				cmp.l	#48,d0
+				cmp.l	#95,d0
 				ble.s	.finborne
-				move.l	#48,d0
+				move.l	#95,d0
 .finborne:
 
 				move.w	#$AAFF,d7			; Time used (white) - one frame
@@ -526,12 +570,12 @@ DrawVblTimer:
 .Draw:
 				lea		ScreenBase(pc),a0
 				move.l	(a0),a0
-				add.l	#64,a0				; middle of first line of screen (after interrupt vector)
+				add.l	#128+(128-95)/2-2,a0				; middle of first line of screen (after interrupt vector)
 
 				move.w	d6,(a0)+ ; First pixel to see the start
 				move.w	d6,(a0)+ ; First pixel to see the start
 
-				move.l	#48,d1
+				move.l	#95,d1
 				lsr.l	#1,d0				; Words.
 				lsr.l	#1,d1				; Words.
 .DrawLoopGet:

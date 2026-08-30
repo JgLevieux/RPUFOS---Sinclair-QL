@@ -19,7 +19,7 @@ Start:
 			; Remove QDOS, mainly for double buffering as second screen adress contain QDOS data
                 trap    #0              			; Call QDOS for Superviseur mode
 
-				DBGBREAK
+				;DBGBREAK
 			; Check if minerva is used
 				moveq	#0,d0							; get rom version
 				trap	#1								; get rom version trap call
@@ -33,6 +33,17 @@ Start:
 				move.w	#0,(a0)							; 0 if jsrom
 .cont:
 
+
+	or.w    #$700,sr						; shut down all interrupts
+
+
+	moveq	#0,d0
+	move.l	#$28000,a0
+	moveq	#256/4-1,d7
+.l
+	move.l	d0,(a0)+
+	dbra	d7,.l
+
 			; No interrupt
 				move.w	#$2700,sr
 
@@ -42,7 +53,7 @@ Start:
 
 			
 			; Setup double buffering & first clear
-				move.b	#ScreenMode01,$18063
+				;move.b	#ScreenMode01,$18063
 				move.l	#$28000,a0
 				;bsr     ClearScreen
 			
@@ -53,7 +64,7 @@ Start:
 				move.l	#$20000,(a0)
 
 			; Setup VBL interrupt (thanks to QLSys 0.01 by spkr/smfx for the sample code)
-			DBGBREAK
+			;DBGBREAK
 				lea		VBLRouterList(pc),a0
 				lea		VBLInterrupt(pc),a1
 				move.l	a1,4(a0)					; Function to be called each frame with relocation.
@@ -64,7 +75,7 @@ Start:
 				move.l	a0,$2803c					; write VBLANK pointer to JSROM location
 				bra.s	.SetupIntDone
 .InitForMinerva:
-				move.l	a0,$3803c					; write VBLANK pointer to Minerva location
+				move.l	a0,$2803c					; write VBLANK pointer to Minerva location
 .SetupIntDone:
 				move.w	#$2100,sr					; Enable interrupts for Vbl, keyboard & sound (as well as microdrive & rs232)
 
@@ -80,7 +91,7 @@ MainLoop:
 				;bsr		WaitVBlank
 				;bra		MainLoop
 
-				bsr		SwapBuffer
+				;bsr		SwapBuffer
 
 				bra		MainLoop
 				bsr		DrawVblTimer
@@ -355,6 +366,6 @@ DoSwapBuffer:				dc.w	1
 	even
 							dcb.b	512,0
 TopOfStack:
-							dcb.b	64*1024,0
+							;dcb.b	64*1024,0
 	even
 
