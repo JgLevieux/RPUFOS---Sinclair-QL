@@ -88,6 +88,11 @@ MainLoop:
 
 				bsr		SwapBuffer
 
+				lea		ScreenBase(pc),a0
+				move.l	(a0),a0
+				move.l	#0,d0
+				bsr		ClearScreenMinusOneLine
+
 				bsr		DrawVblTimer
 				
 				bsr 	ReadKeyboard
@@ -225,12 +230,12 @@ ProcessScrolling:
 	rept SCROLL_Y_SIZE
                 movem.l (a0)+,d0-d6/a2-a6
 				movem.l	d0-d6/a2-a6,(a1)
-				lea		(12*4)(a1),a1
+				;lea		(12*4)(a1),a1
 
                 ;movem.l (a0)+,d0-d3
 				;movem.l	d0-d3,(a1)
 
-				lea		(128-12*4)(a1),a1
+				lea		(128)(a1),a1
 	endr
 
 				rts

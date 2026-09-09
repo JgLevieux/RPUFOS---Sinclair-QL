@@ -21,7 +21,7 @@
 		clr.l	(\2)
 	endm
 
-	if 1
+	if 0
 	macro DBGENABLE
 		moveq #5,d1
 		moveq #-26,d0
