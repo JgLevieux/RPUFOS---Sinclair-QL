@@ -1,16 +1,11 @@
-; ====================================================================
-; LECTEUR MUSICAL MT.IPCOM - SINCLAIR QL (MC68008)
-; Version strictement relogeable (PIC - Position Independent Code)
-; ====================================================================
+	even
+	include "sk_ipc.asm"
+	even
 
 ;MUSIC_KING equ 1
 MUSIC_TETRIS equ 1
 ;MUSIC_PROUT equ 1
-; --------------------------------------------------------------------
-; ROUTINE D'INITIALISATION
-; Appeler une fois avant de lancer la musique
-; a0 = Adresse de la table musicale (ex: Music_Demoscene)
-; --------------------------------------------------------------------
+
 StartMusic:
         lea     Music_Pointer(pc),a1
         move.l  a0,(a1)
@@ -22,12 +17,8 @@ StartMusic:
         move.b  #1,(a1)
         rts
 
-; --------------------------------------------------------------------
-; ROUTINE DE LECTURE (FRAME)
-; À appeler à 50 Hz
-; --------------------------------------------------------------------
 PlayMusic:
-        movem.l d0-d3/a0-a3,-(sp)
+        movem.l d0-d6/a0-a3,-(sp)
 
         lea     Music_Status(pc),a1
         tst.b   (a1)
@@ -40,54 +31,49 @@ PlayMusic:
 .read_next:
         lea     Music_Pointer(pc),a1
         move.l  (a1),a0            ; a0 pointe sur les données de la table
-        move.w  (a0)+,d1           ; Lit le Mot 1
+        move.w  (a0)+,d0           ; Pitch 1 & 2 or END or SILENCE
 
-        cmp.w   #$FFFF,d1
+        cmp.w   #CMD_END,d0
         beq.s   .stop_music
 
-        cmp.w   #$FF00,d1
+        cmp.w   #CMD_SILENCE,d0
         beq.s   .do_silence
 
 .do_sound:
-        ; Extraction et écriture des paramètres 
-        lea     IPC_Sound_Params(pc),a1
-        
-        move.b  d1,1(a1)           ; Pitch 2 (Low byte)
-        lsr.w   #8,d1
-        move.b  d1,0(a1)           ; Pitch 1 (High byte)
-
-        move.w  (a0)+,2(a1)        ; Interval
-
-        move.w  (a0)+,d2           ; Duration
+        move.w  (a0)+,d6           ; Interval
+        move.w  (a0)+,d7			; Duration
         lea     Music_Timer(pc),a2
-        move.w  d2,(a2)            ; Met à jour le timer interne
-        move.w  d2,4(a1)           ; Passe la durée au bloc IPC
-
-        move.w  (a0)+,d1           ; Step, Wrap, Rand, Fuzz
-        move.b  d1,7(a1)           
-        lsr.w   #8,d1
-        move.b  d1,6(a1)           
+        move.w  d7,(a2)            ; Met à jour le timer interne
+		
+        move.w  (a0)+,d1           ; Step & Wrap & Rand & Fuzz
+		move.w	d1,d2
+		and.w	#$F,d2				; Fuzz
+		lsr.w	#4,d1
+		move.w	d1,d3
+		and.w	#$F,d3				; Rand
+		lsr.w	#4,d1
+		move.w	d1,d4
+		and.w	#$F,d4				; Wrap
+		lsr.w	#4,d1
+		move.w	d1,d5
+		and.w	#$F,d5				; Step
 
         lea     Music_Pointer(pc),a2
         move.l  a0,(a2)            ; Sauvegarde le pointeur avancé
 
-        lea     IPC_Block_Sound(pc),a3
-        moveq   #$11,d0
-        trap    #1
+		bsr		SndTone
+		
         bra.s   .exit
 
 .do_silence:
         ;addq.l  #2,a0              ; Ignore Intervalle
         lea     Music_Timer(pc),a1
         move.w  (a0)+,(a1)         ; Récupère Duration pour le timer interne
-        ;addq.l  #2,a0              ; Ignore les paramètres avancés
         
         lea     Music_Pointer(pc),a1
         move.l  a0,(a1)            ; Sauvegarde le pointeur
 
-        lea     IPC_Block_Kill(pc),a3
-        moveq   #$11,d0
-        trap    #1
+		bsr		SndSilence
         bra.s   .exit
 
 .decrement:
@@ -102,38 +88,94 @@ PlayMusic:
         lea     Music_PointerSave(pc),a0
 		move.l	(a0),(a1)
         
-        lea     IPC_Block_Kill(pc),a3
-        moveq   #$11,d0
-        trap    #1
+		bsr		SndSilence
 
 .exit:
-        movem.l (sp)+,d0-d3/a0-a3
+        movem.l (sp)+,d0-d6/a0-a3
         rts
 
-; --------------------------------------------------------------------
-; BLOCS DE DONNÉES IPC ET VARIABLES D'ÉTAT
-; Inclus dans la section code pour garantir le calcul d'offset (PC)
-; --------------------------------------------------------------------
-IPC_Block_Sound:
-        dc.b    $0A         ; Commande IPC : Initiate Sound
-        dc.b    8           ; 8 octets de paramètres
-        dc.l    $0000aaaa   ; Masque de bits (INCERTITUDE: vérifier format)
-IPC_Sound_Params:
-        dc.b    0,0         ; Pitch 1, Pitch 2
-        dc.w    0           ; Interval
-        dc.w    0           ; Duration
-        dc.b    1           ; Step & Wrap
-        dc.b    0           ; Rand & Fuzz
-        dc.b	1			; No return parameters       
-        even
 
-IPC_Block_Kill:
-        dc.b    $0B         ; Commande IPC : Kill Sound
-        dc.b    0           ; 0 octet de paramètre
-        dc.l    $0000aaaa   ; Masque de bits
-        dc.b	1			; No return parameters       
-       even
+SndTone:
+                lea     SndPrm(pc),a3
+                move.w  d0,d1
+                andi.w  #$F,d1
+                move.b  d1,SND_PARAM_PITCH_2_LBYTE(a3)
 
+				lsr.w	#4,d0
+                move.w  d0,d1
+                andi.w  #$F,d1
+                move.b  d1,SND_PARAM_PITCH_2_HBYTE(a3)
+
+				lsr.w	#4,d0
+                move.w  d0,d1
+                andi.w  #$F,d1
+                move.b  d1,SND_PARAM_PITCH_1_LBYTE(a3)
+
+				lsr.w	#4,d0
+                move.w  d0,d1
+                andi.w  #$F,d1
+                move.b  d1,SND_PARAM_PITCH_1_HBYTE(a3)
+				
+				move.b	d6,SND_PARAM_STEP_INTERVAL_1_LBYTE(a3)
+
+				move.b	d7,SND_PARAM_DURATION_2_LBYTE(a3)
+
+				
+                move.b  d5,SND_PARAM_STEP(a3)
+                move.b  d4,SND_PARAM_WRAP(a3)
+                move.b  d3,SND_PARAM_RANDOM(a3)
+                move.b  d2,SND_PARAM_FUZZ(a3)
+                bsr     IpcStart
+                moveq   #IPC_BEEP,d0
+                bsr     IpcNibble
+                lea     SndPrm(pc),a3
+                moveq   #16-1,d3
+.nib:
+                move.b  (a3)+,d0
+                bsr     IpcNibble
+                dbra    d3,.nib
+                bra     IpcEnd
+
+SndSilence:
+                bsr     IpcStart
+                moveq   #IPC_KILLSND,d0
+                bsr     IpcNibble
+                bra     IpcEnd
+
+                even
+
+SND_PARAM_PITCH_1_HBYTE				equ		0
+SND_PARAM_PITCH_1_LBYTE				equ		1
+SND_PARAM_PITCH_2_HBYTE				equ		2
+SND_PARAM_PITCH_2_LBYTE				equ		3
+
+SND_PARAM_STEP_INTERVAL_1_HBYTE		equ		4
+SND_PARAM_STEP_INTERVAL_1_LBYTE		equ		5
+SND_PARAM_STEP_INTERVAL_2_HBYTE		equ		6
+SND_PARAM_STEP_INTERVAL_2_LBYTE		equ		7
+
+SND_PARAM_DURATION_1_HBYTE			equ		8
+SND_PARAM_DURATION_1_LBYTE			equ		9
+SND_PARAM_DURATION_2_HBYTE			equ		10
+SND_PARAM_DURATION_2_LBYTE			equ		11
+
+SND_PARAM_STEP						equ		12
+SND_PARAM_WRAP						equ		13
+SND_PARAM_RANDOM					equ		14
+SND_PARAM_FUZZ						equ		15
+				
+SndPrm:
+                dc.b    0,0                     ; pitch    : SndTone fills these four
+                dc.b    0,0                     ; pitch_2
+                dc.b    0,0                     ; step interval, low byte  : no slide
+                dc.b    0,0                     ; step interval, high byte
+                dc.b    0,0                     ; duration, low byte
+                dc.b    0,0                     ; duration, high byte
+                dc.b    0,0                     ; pitch step, wrap
+                dc.b    0,0                     ; random, and fuzz which SndTone fills
+                even
+
+		
 Music_Pointer:
         dc.l    0           ; Pointeur actuel dans la table
 Music_PointerSave:

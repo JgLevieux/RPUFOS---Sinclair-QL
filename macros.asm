@@ -22,48 +22,47 @@
 	endm
 
 	if 0
-	macro DBGENABLE
-		moveq #5,d1
-		moveq #-26,d0
-		trap #1
-	endm
+		macro DBGENABLE
+			moveq #5,d1
+			moveq #-26,d0
+			trap #1
+		endm
 
-	macro DBGBREAK
-		nop
-		nop
-		dc.w $AADF
-		nop
-		nop
-	endm
+		macro DBGBREAK
+			nop
+			nop
+			dc.w $AADF
+			nop
+			nop
+		endm
 
-	macro DBGLOG
-		dc.w $AAE8
-		dc.b "\1"
-		dc.b 0
-		CNOP 0,2
-	endm
+		macro DBGLOG
+			dc.w $AAE8
+			dc.b "\1"
+			dc.b 0
+			CNOP 0,2
+		endm
 
-	macro DBGLOGBREAK
-		dc.w $AAE9
-		dc.b "\1"
-		dc.b 0
-		CNOP 0,2
-	endm
+		macro DBGLOGBREAK
+			dc.w $AAE9
+			dc.b "\1"
+			dc.b 0
+			CNOP 0,2
+		endm
 	else
-	macro DBGENABLE
-		nop
-	endm
+		macro DBGENABLE
+			nop
+		endm
 
-	macro DBGBREAK
-		nop
-	endm
+		macro DBGBREAK
+			nop
+		endm
 
-	macro DBGLOG
-		nop
-	endm
+		macro DBGLOG
+			nop
+		endm
 
-	macro DBGLOGBREAK
-		nop
-	endm
-	
+		macro DBGLOGBREAK
+			nop
+		endm
 	endif

@@ -1,5 +1,3 @@
-USE_VBL_INT	equ 1
-
 				bra		Start
 
 	even
@@ -24,7 +22,7 @@ USE_VBL_INT	equ 1
 ScreenMode01	equ		%00001000
 ScreenMode02	equ		%10001000
 
-IsMinverva:		dc.w	0
+Text_Adress : dcb.b 32
 
 ; =============================================================================
 Start:
@@ -33,19 +31,6 @@ Start:
                 trap    #0              			; Call QDOS for Superviseur mode
                 ori.w   #$0700,sr       ; All hardware interrupt off.
 
-			; Check if minerva is used
-				moveq	#0,d0							; get rom version
-				trap	#1								; get rom version trap call
-				cmp.w	#$3130,d2						; check for JSROM
-				lea		IsMinverva(pc),a0
-				beq		.isjs
-.ismin:
-				move.w	#-1,(a0)						; -1 if minerva
-				jmp	.cont
-.isjs
-				move.w	#0,(a0)							; 0 if jsrom
-.cont:
-
 			; Set my own stack
 				lea		TopOfStack(pc),a0
 				move.l	a0,sp
@@ -53,7 +38,7 @@ Start:
 			; Setup double buffering & first clear
 				move.b	#ScreenMode01,$18063
 				move.l	#$28000,a0
-				bsr     ClearScreen
+				bsr		ClearScreenMinusOneLine
 			
 				move.l	#$20000,a0
 				bsr     ClearScreen
@@ -61,26 +46,20 @@ Start:
 				lea		ScreenBase(pc),a0
 				move.l	#$20000,(a0)
 
-	ifd USE_VBL_INT
 			; No interrupt
 				move.w	#$2700,sr
-			; Setup VBL interrupt (thanks to QLSys 0.01 by spkr/smfx for the sample code)
+			; Setup VBL interrupt (thanks to QLSys 0.01 by spkr/smfx for the sample code
+			;						and to Claude for the fix to make it works on other ROM than JS)
+				moveq	#0,d0						; MT.INF : demande les infos ROM
+				trap	#1							; -> a0 = base réelle des variables système
+				move.l	a0,a2						; Accroche VBLRouterList sur SV_PLIST (valable JS & Minerva)
+
 				lea		VBLRouterList(pc),a0
 				lea		VBLInterrupt(pc),a1
 				move.l	a1,4(a0)					; Function to be called each frame with relocation.
-				
-				lea		IsMinverva(pc),a2
-				tst.w	(a2)
-				bne.s	.InitForMinerva
-				move.l	a0,$2803c					; write VBLANK pointer to JSROM location
-				bra.s	.SetupIntDone
-.InitForMinerva:
-				move.l	a0,$3803c					; write VBLANK pointer to Minerva location
-.SetupIntDone:
+				move.l	a0,$3c(a2)					; write VBLANK pointer to JSROM location
 				move.w	#$2100,sr					; Enable interrupts for Vbl, keyboard & sound (as well as microdrive & rs232)
-	else
-                ori.w   #$0700,sr       ; All hardware interrupt off.
-	endif
+				
 			; Frame counter (real display)
 				lea     NbLoop(pc),a0
                 move.l  #0,(a0)
@@ -411,8 +390,7 @@ StartLogoEko:
 
 				lea		DemoStatus(pc),a0
 				move.l	#STATUS_DEMO_LOGO_EKO,(a0)
-
-
+				
 				move.l	#300,d0
 				bsr		WaitNbVBlank
 
@@ -2219,13 +2197,12 @@ VBLRouterList:				dc.l	0,VBLInterrupt		; !!! Must be relocated !!!
 ;=============================================================================
 VBLInterrupt:
 				movem.l d0-a6,-(sp)
-				bsr		PlayMusic
 				
 			; Clean unused stuff around function ptr for clearer screen
 				lea		$28000,a0
 				moveq	#0,d0
-				move.l	d0,$2C(a0)
-				move.l	d0,$2C+4(a0)
+				;move.l	d0,$2C(a0)
+				;move.l	d0,$2C+4(a0)
 				
 				;DBGBREAK
 			; Stop possible flash bit activated by VblInt function adress
@@ -2247,7 +2224,9 @@ VBLInterrupt:
 				beq.s	.F0
 				bset	#10,d1
 .F0:
-				move.w	d1,$3C+4(a0)
+				;move.w	d1,$3C+4(a0)
+
+				bsr		PlayMusic
 				
 			; Vbl counter
 				lea		VblNbFrameLastLoop(pc),a0
@@ -2274,28 +2253,22 @@ VBLInterrupt:
 
 ;=============================================================================
  ; d0.l = nb vbl (50 = 1 second)
-	ifd USE_VBL_INT
 WaitNbVBlank:
-				move.l a0,-(sp)
+				;move.l a0,-(sp)
 
-				lea		NbVbl(pc),a0
-				add.l	(a0),d0
+				lea		NbVbl(pc),a4
+				move.l	d0,d4
+				add.l	(a4),d4
 .LoopWait:
-				cmp.l	(a0),d0
+				;bsr		WaitVBlank
+				;bsr		PlayMusic
+
+				cmp.l	(a4),d4
 				bge.s	.LoopWait
 
-				move.l	(sp)+,a0
+				;move.l	(sp)+,a0
 				rts
-	else
-WaitNbVBlank:
-				sub.l	#1,d0
-.LoopWait:
-				bsr		WaitVBlank
-				dbra	d0,.LoopWait
-				rts
-	endif
 ;=============================================================================
-	ifd USE_VBL_INT
 WaitVBlank:
 				lea     NbLoop(pc),a0
 				add.l	#1,(a0)						; Increase current frame, so we can have a vbl int triggered
@@ -2320,25 +2293,6 @@ WaitVBlank:
 				move.l	#0,(a0)
 
 				rts
-	else
-WaitVBlank:
-				lea     NbLoop(pc),a0
-				add.l	#1,(a0)
-				lea     NbVbl(pc),a0
-				add.l	#1,(a0)
-				lea     VblNbFrameLastLoopSaved(pc),a0
-				move.l	#4,(a0)
-
-				moveq	#0,d1
-				moveq	#1,d2
-				move.b	#1<<3,$18021   ; ack frame interrupt
-.wait:
-				add.l	d2,d1
-				btst    #3,$18021		; ...and wait for the next VBL
-				beq.s   .wait                   ; (bit 3 only: bits 7..5 always move)
-
-				rts
-	endif
 
 ;=============================================================================
 DrawVblTimer:
@@ -2478,6 +2432,80 @@ CopyScreenMinusOneLine:
 			endr
                 rts
 
+;=============================================================================
+; Number to Ascii (000000-999999)
+; Input : -
+;		d0.l = number
+;		a0 = text address to fill
+; Destroy :
+;		d0, d1, d2, d5, d6
+;		a0, a1
+;=============================================================================
+NumberToAscii_000000:
+				moveq	#0,d1
+.l000000:
+				add.w	#1,d1
+				sub.l	#1000000,d0
+				bge.s	.l000000
+				sub.w	#1,d1
+				add.b	#"0",d1
+				move.b	d1,0(a0)
+				add.l	#1000000,d0
+
+				moveq	#0,d1
+.l00000:
+				add.w	#1,d1
+				sub.l	#100000,d0
+				bge.s	.l00000
+				sub.w	#1,d1
+				add.b	#"0",d1
+				move.b	d1,1(a0)
+				add.l	#100000,d0
+
+				moveq	#0,d1
+.l0000:
+				add.w	#1,d1
+				sub.l	#10000,d0
+				bge.s	.l0000
+				sub.w	#1,d1
+				add.b	#"0",d1
+				move.b	d1,2(a0)
+				add.l	#10000,d0
+
+				moveq	#0,d1
+.l000:
+				add.w	#1,d1
+				sub.l	#1000,d0
+				bge.s	.l000
+				sub.w	#1,d1
+				add.b	#"0",d1
+				move.b	d1,3(a0)
+				add.l	#1000,d0
+
+				moveq	#0,d1
+.l00:
+				add.w	#1,d1
+				sub.l	#100,d0
+				bge.s	.l00
+				sub.w	#1,d1
+				add.b	#"0",d1
+				move.b	d1,4(a0)
+				add.l	#100,d0
+
+				moveq	#0,d1
+.l0:
+				add.w	#1,d1
+				sub.l	#10,d0
+				bge.s	.l0
+				sub.w	#1,d1
+				add.b	#"0",d1
+				move.b	d1,5(a0)
+				add.l	#10,d0
+
+				add.b	#"0",d0
+				move.b	d0,6(a0)
+				rts
+
 ; =============================================================================
 ;  ZONE DE DONNÉES / VARIABLES
 ; =============================================================================
@@ -2488,7 +2516,7 @@ ScreenBaseFront:			dc.l	$28000
 BufferNum:					dc.w	0
 DoSwapBuffer:				dc.w	1
 	even
-							dcb.b	512,0
+							dcb.b	1024,0
 TopOfStack:
 	even
 
