@@ -1,5 +1,3 @@
-DATA_OLIPIX	equ		1
-
 NUM_VERTICES    equ     20              ; Nombre de sommets du logo
 NUM_EDGES       equ     14              ; Nombre d'arêtes du logo
 
@@ -576,3 +574,92 @@ Projected1:     ds.w    NUM_VERTICES*2
 Projected2:     ds.w    NUM_VERTICES*2
                 even	
 
+Vertices_R:
+                dc.w    -15, -20,   0   ; 0 : Base du montant gauche
+                dc.w    -15,  20,   0   ; 1 : Sommet du montant gauche
+                dc.w     15,  20,   0   ; 2 : Haut de la boucle (droite)
+                dc.w     15,   0,   0   ; 3 : Bas de la boucle (droite)
+                dc.w    -15,   0,   0   ; 4 : Jonction médiane sur le montant gauche
+                dc.w     15, -20,   0   ; 5 : Pied de la diagonale droite
+
+Edges_R:
+                dc.b    0, 1            ; Montant vertical gauche
+                dc.b    1, 2            ; Barre supérieure de la boucle
+                dc.b    2, 3            ; Côté droit de la boucle
+                dc.b    3, 4            ; Barre médiane (fermeture de la boucle)
+                dc.b    4, 5            ; Diagonale / jambe d'appui
+
+                even
+				
+Vertices_P:
+                dc.w    -15, -20,   0   ; 0 : Base du montant
+                dc.w    -15,  20,   0   ; 1 : Sommet du montant
+                dc.w     15,  20,   0   ; 2 : Haut de la boucle (droite)
+                dc.w     15,   0,   0   ; 3 : Bas de la boucle (droite)
+                dc.w    -15,   0,   0   ; 4 : Jonction médiane sur le montant
+
+Edges_P:
+                dc.b    0, 1            ; Montant vertical
+                dc.b    1, 2            ; Barre supérieure de la boucle
+                dc.b    2, 3            ; Côté droit de la boucle
+                dc.b    3, 4            ; Barre médiane (fermeture de la boucle)
+
+                even
+			
+Vertices_U:
+                dc.w    -15,  20,   0   ; 0 : Sommet gauche
+                dc.w    -15, -20,   0   ; 1 : Base gauche
+                dc.w     15, -20,   0   ; 2 : Base droite
+                dc.w     15,  20,   0   ; 3 : Sommet droit
+
+Edges_U:
+                dc.b    0, 1            ; Montant vertical gauche
+                dc.b    1, 2            ; Barre horizontale basse
+                dc.b    2, 3            ; Montant vertical droit
+
+                even				
+				
+Vertices_F:
+                dc.w    -15, -20,   0   ; 0 : Base du montant
+                dc.w    -15,  20,   0   ; 1 : Sommet du montant
+                dc.w     15,  20,   0   ; 2 : Extrémité barre supérieure
+                dc.w    -15,   0,   0   ; 3 : Jonction médiane sur le montant
+                dc.w      5,   0,   0   ; 4 : Extrémité barre médiane
+
+Edges_F:
+                dc.b    0, 1            ; Montant vertical
+                dc.b    1, 2            ; Barre supérieure
+                dc.b    3, 4            ; Barre médiane
+
+                even
+				
+Vertices_O:
+                dc.w    -15,  20,   0   ; 0 : Coin haut gauche
+                dc.w     15,  20,   0   ; 1 : Coin haut droit
+                dc.w     15, -20,   0   ; 2 : Coin bas droit
+                dc.w    -15, -20,   0   ; 3 : Coin bas gauche
+
+Edges_O:
+                dc.b    0, 1            ; Barre supérieure
+                dc.b    1, 2            ; Montant droit
+                dc.b    2, 3            ; Barre inférieure
+                dc.b    3, 0            ; Montant gauche
+
+                even				
+
+Vertices_S:
+                dc.w     15,  20,   0   ; 0 : Extrémité supérieure droite
+                dc.w    -15,  20,   0   ; 1 : Coin supérieur gauche
+                dc.w    -15,   0,   0   ; 2 : Flanc haut gauche
+                dc.w     15,   0,   0   ; 3 : Flanc bas droit
+                dc.w     15, -20,   0   ; 4 : Coin inférieur droit
+                dc.w    -15, -20,   0   ; 5 : Extrémité inférieure gauche
+
+Edges_S:
+                dc.b    0, 1            ; Barre supérieure
+                dc.b    1, 2            ; Montant haut gauche
+                dc.b    2, 3            ; Barre médiane diagonale / horizontale
+                dc.b    3, 4            ; Montant bas droit
+                dc.b    4, 5            ; Barre inférieure
+
+                even

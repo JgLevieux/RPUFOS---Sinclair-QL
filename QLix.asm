@@ -1894,7 +1894,7 @@ MoveQLix:
 				sub.l	#QLIX_DIST_ADJUST,(a2)
 				add.l	#QLIX_DIST_ADJUST,8(a2)
 
-.startdisty;
+.startdisty:
 				move.l	4(a1),d0					; Y0
 				sub.l	12(a1),d0				; Y0-Y1
 				bpl.s	.nonegy

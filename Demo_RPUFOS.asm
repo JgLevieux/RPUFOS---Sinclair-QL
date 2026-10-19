@@ -35,19 +35,21 @@ Start:
 				lea		TopOfStack(pc),a0
 				move.l	a0,sp
 
+			; No interrupt
+				move.w	#$2700,sr
+				
 			; Setup double buffering & first clear
 				move.b	#ScreenMode01,$18063
-				move.l	#$28000,a0
-				bsr		ClearScreenMinusOneLine
 			
 				move.l	#$20000,a0
 				bsr     ClearScreen
 
+				move.l	#$28000,a0
+				bsr		ClearScreen
+
 				lea		ScreenBase(pc),a0
 				move.l	#$20000,(a0)
 
-			; No interrupt
-				move.w	#$2700,sr
 			; Setup VBL interrupt (thanks to QLSys 0.01 by spkr/smfx for the sample code
 			;						and to Claude for the fix to make it works on other ROM than JS)
 				moveq	#0,d0						; MT.INF : demande les infos ROM
@@ -2197,12 +2199,13 @@ VBLRouterList:				dc.l	0,VBLInterrupt		; !!! Must be relocated !!!
 ;=============================================================================
 VBLInterrupt:
 				movem.l d0-a6,-(sp)
-				
+
+				;jmp		.NoClean
 			; Clean unused stuff around function ptr for clearer screen
 				lea		$28000,a0
 				moveq	#0,d0
-				;move.l	d0,$2C(a0)
-				;move.l	d0,$2C+4(a0)
+				move.l	d0,$2C(a0)
+				move.l	d0,$2C+4(a0)
 				
 				;DBGBREAK
 			; Stop possible flash bit activated by VblInt function adress
@@ -2224,7 +2227,9 @@ VBLInterrupt:
 				beq.s	.F0
 				bset	#10,d1
 .F0:
-				;move.w	d1,$3C+4(a0)
+				move.w	d1,$3C+4(a0)
+				
+.NoClean:
 
 				bsr		PlayMusic
 				
